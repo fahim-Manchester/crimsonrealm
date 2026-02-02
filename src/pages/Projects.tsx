@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useCleaveDismantle } from "@/hooks/useCleaveDismantle";
 import PageLayout from "@/components/layout/PageLayout";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
-import DataTable from "@/components/shared/DataTable";
+import GroupedDataTable from "@/components/shared/GroupedDataTable";
+import { CleaveControls } from "@/components/shared/CleaveControls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,6 +21,7 @@ interface Project {
   name: string;
   description: string | null;
   status: string | null;
+  group_id: string | null;
   created_at: string;
 }
 
@@ -42,7 +45,7 @@ const Projects = () => {
     status: "active",
   });
 
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     const { data, error } = await supabase
       .from("projects")
       .select("*")
@@ -53,14 +56,26 @@ const Projects = () => {
     } else {
       setProjects(data || []);
     }
-    setLoading(false);
-  };
+  }, []);
+
+  const {
+    groups,
+    cleaving,
+    loading: groupsLoading,
+    fetchGroups,
+    cleaveWithAI,
+    createManualGroup,
+    dismantleGroup,
+    dismantleAllGroups,
+    moveEntryToGroup,
+    renameGroup,
+  } = useCleaveDismantle<Project>("projects", user?.id, fetchProjects);
 
   useEffect(() => {
     if (user) {
-      fetchProjects();
+      Promise.all([fetchProjects(), fetchGroups()]).finally(() => setLoading(false));
     }
-  }, [user]);
+  }, [user, fetchProjects, fetchGroups]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,7 +164,17 @@ const Projects = () => {
   return (
     <PageLayout title="Territories" subtitle="The projects you've claimed in your conquest">
       <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex justify-end">
+        <div className="flex flex-col sm:flex-row justify-between gap-4">
+          <CleaveControls
+            onCleaveAI={(numGroups, luckyMode) => cleaveWithAI(projects, numGroups, luckyMode)}
+            onCreateManualGroup={createManualGroup}
+            onDismantleAll={dismantleAllGroups}
+            hasGroups={groups.length > 0}
+            cleaving={cleaving}
+            loading={groupsLoading}
+            entryCount={projects.length}
+          />
+
           <Dialog open={dialogOpen} onOpenChange={(open) => {
             setDialogOpen(open);
             if (!open) resetForm();
@@ -217,11 +242,15 @@ const Projects = () => {
           </Dialog>
         </div>
 
-        <DataTable
+        <GroupedDataTable
           data={projects}
           columns={columns}
+          groups={groups}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          onDismantleGroup={dismantleGroup}
+          onMoveEntry={moveEntryToGroup}
+          onRenameGroup={renameGroup}
           emptyMessage="No territories claimed. Stake your first claim."
         />
       </div>

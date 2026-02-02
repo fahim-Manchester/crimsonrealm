@@ -14,10 +14,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      entry_groups: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          name: string
+          section: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          name: string
+          section: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          name?: string
+          section?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
           created_at: string
           description: string | null
+          group_id: string | null
           id: string
           name: string
           status: string | null
@@ -27,6 +58,7 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
+          group_id?: string | null
           id?: string
           name: string
           status?: string | null
@@ -36,13 +68,22 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
+          group_id?: string | null
           id?: string
           name?: string
           status?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "projects_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "entry_groups"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       resource_projects: {
         Row: {
@@ -85,6 +126,7 @@ export type Database = {
           category: string | null
           created_at: string
           description: string | null
+          group_id: string | null
           id: string
           project_id: string | null
           title: string
@@ -96,6 +138,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           description?: string | null
+          group_id?: string | null
           id?: string
           project_id?: string | null
           title: string
@@ -107,6 +150,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           description?: string | null
+          group_id?: string | null
           id?: string
           project_id?: string | null
           title?: string
@@ -115,6 +159,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "resources_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "entry_groups"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "resources_project_id_fkey"
             columns: ["project_id"]
@@ -129,10 +180,12 @@ export type Database = {
           created_at: string
           description: string | null
           due_date: string | null
+          group_id: string | null
           id: string
           priority: string | null
           project_id: string | null
           status: string | null
+          time_logged: number | null
           title: string
           updated_at: string
           user_id: string
@@ -141,10 +194,12 @@ export type Database = {
           created_at?: string
           description?: string | null
           due_date?: string | null
+          group_id?: string | null
           id?: string
           priority?: string | null
           project_id?: string | null
           status?: string | null
+          time_logged?: number | null
           title: string
           updated_at?: string
           user_id: string
@@ -153,15 +208,24 @@ export type Database = {
           created_at?: string
           description?: string | null
           due_date?: string | null
+          group_id?: string | null
           id?: string
           priority?: string | null
           project_id?: string | null
           status?: string | null
+          time_logged?: number | null
           title?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tasks_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "entry_groups"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tasks_project_id_fkey"
             columns: ["project_id"]

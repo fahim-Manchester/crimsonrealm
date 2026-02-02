@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useCleaveDismantle } from "@/hooks/useCleaveDismantle";
 import PageLayout from "@/components/layout/PageLayout";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
-import DataTable from "@/components/shared/DataTable";
+import GroupedDataTable from "@/components/shared/GroupedDataTable";
+import { CleaveControls } from "@/components/shared/CleaveControls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +22,7 @@ interface Resource {
   url: string | null;
   category: string | null;
   project_id: string | null;
+  group_id: string | null;
   created_at: string;
 }
 
@@ -44,7 +47,7 @@ const Resources = () => {
     project_id: "",
   });
 
-  const fetchResources = async () => {
+  const fetchResources = useCallback(async () => {
     const { data, error } = await supabase
       .from("resources")
       .select("*")
@@ -55,7 +58,7 @@ const Resources = () => {
     } else {
       setResources(data || []);
     }
-  };
+  }, []);
 
   const fetchProjects = async () => {
     const { data, error } = await supabase
@@ -68,11 +71,24 @@ const Resources = () => {
     }
   };
 
+  const {
+    groups,
+    cleaving,
+    loading: groupsLoading,
+    fetchGroups,
+    cleaveWithAI,
+    createManualGroup,
+    dismantleGroup,
+    dismantleAllGroups,
+    moveEntryToGroup,
+    renameGroup,
+  } = useCleaveDismantle<Resource>("resources", user?.id, fetchResources);
+
   useEffect(() => {
     if (user) {
-      Promise.all([fetchResources(), fetchProjects()]).finally(() => setLoading(false));
+      Promise.all([fetchResources(), fetchProjects(), fetchGroups()]).finally(() => setLoading(false));
     }
-  }, [user]);
+  }, [user, fetchResources, fetchGroups]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,7 +195,17 @@ const Resources = () => {
   return (
     <PageLayout title="Chronicles" subtitle="Your collection of sacred resources and ancient knowledge">
       <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex justify-end">
+        <div className="flex flex-col sm:flex-row justify-between gap-4">
+          <CleaveControls
+            onCleaveAI={(numGroups, luckyMode) => cleaveWithAI(resources, numGroups, luckyMode)}
+            onCreateManualGroup={createManualGroup}
+            onDismantleAll={dismantleAllGroups}
+            hasGroups={groups.length > 0}
+            cleaving={cleaving}
+            loading={groupsLoading}
+            entryCount={resources.length}
+          />
+
           <Dialog open={dialogOpen} onOpenChange={(open) => {
             setDialogOpen(open);
             if (!open) resetForm();
@@ -270,11 +296,15 @@ const Resources = () => {
           </Dialog>
         </div>
 
-        <DataTable
+        <GroupedDataTable
           data={resources}
           columns={columns}
+          groups={groups}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          onDismantleGroup={dismantleGroup}
+          onMoveEntry={moveEntryToGroup}
+          onRenameGroup={renameGroup}
           emptyMessage="No resources yet. Begin documenting your knowledge."
         />
       </div>

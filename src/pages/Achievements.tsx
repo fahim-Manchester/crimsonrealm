@@ -3,226 +3,204 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import PageLayout from "@/components/layout/PageLayout";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-import { Sparkles, Loader2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Trophy, Award, Gem, Clock } from "lucide-react";
 
-interface Resource {
+interface CompletedProject {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+}
+
+interface CompletedTask {
   id: string;
   title: string;
   description: string | null;
-  category: string | null;
-}
-
-interface CategorizedGroup {
-  theme: string;
-  resources: Resource[];
+  time_logged: number | null;
+  project_id: string | null;
+  created_at: string;
+  project_name?: string;
 }
 
 const Achievements = () => {
   const { user, loading: authLoading } = useAuth();
-  const [resources, setResources] = useState<Resource[]>([]);
-  const [categorizedGroups, setCategorizedGroups] = useState<CategorizedGroup[]>([]);
+  const [completedProjects, setCompletedProjects] = useState<CompletedProject[]>([]);
+  const [completedTasks, setCompletedTasks] = useState<CompletedTask[]>([]);
+  const [allProjects, setAllProjects] = useState<{ id: string; name: string; status: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [cleaving, setCleaving] = useState(false);
-  const [hasCleaved, setHasCleaved] = useState(false);
-
-  const fetchResources = async () => {
-    const { data, error } = await supabase
-      .from("resources")
-      .select("id, title, description, category")
-      .order("title");
-    
-    if (error) {
-      toast.error("Failed to fetch resources");
-    } else {
-      setResources(data || []);
-    }
-    setLoading(false);
-  };
 
   useEffect(() => {
     if (user) {
-      fetchResources();
+      fetchData();
     }
   }, [user]);
 
-  const handleCleave = async () => {
-    if (resources.length === 0) {
-      toast.error("No resources to categorize. Add some chronicles first.");
-      return;
+  const fetchData = async () => {
+    // Fetch all projects for trophy case
+    const { data: projectsData } = await supabase
+      .from("projects")
+      .select("id, name, description, status, created_at")
+      .order("created_at", { ascending: false });
+
+    if (projectsData) {
+      setAllProjects(projectsData);
+      setCompletedProjects(
+        projectsData.filter((p) => p.status === "completed")
+      );
     }
 
-    setCleaving(true);
-    
-    try {
-      // Group resources by existing category or create smart groupings
-      const grouped: Record<string, Resource[]> = {};
-      
-      resources.forEach((resource) => {
-        const category = resource.category?.toLowerCase().trim() || "uncategorized";
-        if (!grouped[category]) {
-          grouped[category] = [];
-        }
-        grouped[category].push(resource);
-      });
+    // Fetch completed tasks with project names
+    const { data: tasksData } = await supabase
+      .from("tasks")
+      .select("id, title, description, time_logged, project_id, created_at")
+      .eq("status", "completed")
+      .order("created_at", { ascending: false });
 
-      // If we have mostly uncategorized, try to find patterns in titles/descriptions
-      const uncategorized = grouped["uncategorized"] || [];
-      if (uncategorized.length > resources.length / 2) {
-        // Simple keyword-based categorization
-        const patterns: Record<string, string[]> = {
-          "Documentation": ["doc", "guide", "manual", "reference", "api"],
-          "Tutorials": ["tutorial", "learn", "course", "how to", "getting started"],
-          "Tools": ["tool", "utility", "app", "software", "platform"],
-          "Articles": ["article", "blog", "post", "read", "write"],
-          "Videos": ["video", "youtube", "watch", "stream"],
-          "Code": ["github", "repo", "code", "library", "framework", "npm", "package"],
-        };
-
-        const newGroups: Record<string, Resource[]> = {};
-        const stillUncategorized: Resource[] = [];
-
-        uncategorized.forEach((resource) => {
-          const text = `${resource.title} ${resource.description || ""}`.toLowerCase();
-          let matched = false;
-
-          for (const [theme, keywords] of Object.entries(patterns)) {
-            if (keywords.some(keyword => text.includes(keyword))) {
-              if (!newGroups[theme]) newGroups[theme] = [];
-              newGroups[theme].push(resource);
-              matched = true;
-              break;
-            }
-          }
-
-          if (!matched) {
-            stillUncategorized.push(resource);
-          }
-        });
-
-        // Merge with existing categories
-        Object.entries(newGroups).forEach(([theme, items]) => {
-          if (grouped[theme.toLowerCase()]) {
-            grouped[theme.toLowerCase()].push(...items);
-          } else {
-            grouped[theme] = items;
-          }
-        });
-
-        if (stillUncategorized.length > 0) {
-          grouped["Uncategorized"] = stillUncategorized;
-        }
-        delete grouped["uncategorized"];
-      }
-
-      // Convert to array format
-      const result: CategorizedGroup[] = Object.entries(grouped)
-        .map(([theme, resources]) => ({
-          theme: theme.charAt(0).toUpperCase() + theme.slice(1),
-          resources,
-        }))
-        .filter(g => g.resources.length > 0)
-        .sort((a, b) => b.resources.length - a.resources.length);
-
-      setCategorizedGroups(result);
-      setHasCleaved(true);
-      toast.success("Resources cleaved into themes!");
-    } catch (error) {
-      toast.error("Failed to cleave resources");
-    } finally {
-      setCleaving(false);
+    if (tasksData && projectsData) {
+      const tasksWithProjects = tasksData.map((task) => ({
+        ...task,
+        project_name: projectsData.find((p) => p.id === task.project_id)?.name,
+      }));
+      setCompletedTasks(tasksWithProjects);
     }
+
+    setLoading(false);
   };
+
+  const formatTime = (minutes: number | null) => {
+    if (!minutes) return null;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours === 0) return `${mins}m`;
+    return `${hours}h ${mins}m`;
+  };
+
+  const totalTimeLogged = completedTasks.reduce((acc, t) => acc + (t.time_logged || 0), 0);
 
   if (authLoading || loading) return <LoadingSpinner />;
 
   return (
-    <PageLayout title="Achievements" subtitle="Witness the patterns in your collected knowledge">
-      <div className="max-w-4xl mx-auto">
-        {/* Cleave Button */}
-        <div className="text-center mb-12">
-          <div className="gothic-card p-8 inline-block">
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-16 h-16 rounded-sm bg-primary/10 flex items-center justify-center">
-                <Sparkles className="w-8 h-8 text-primary" />
-              </div>
-              <h2 className="font-cinzel text-xl tracking-wide">The Cleave</h2>
-              <p className="font-crimson text-muted-foreground max-w-md">
-                Invoke the ancient power to reveal hidden patterns within your chronicles. 
-                Resources that share a common theme shall be gathered together.
-              </p>
-              <Button 
-                onClick={handleCleave} 
-                disabled={cleaving || resources.length === 0}
-                className="gothic-button-primary mt-4"
-              >
-                {cleaving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Cleaving...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Cleave Resources
-                  </>
-                )}
-              </Button>
-              {resources.length === 0 && (
-                <p className="font-crimson text-sm text-muted-foreground italic">
-                  Add resources in Chronicles first
-                </p>
-              )}
-            </div>
+    <PageLayout title="Achievements" subtitle="Your trophies, medals, and gems of conquest">
+      <div className="max-w-6xl mx-auto space-y-12">
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="gothic-card p-6 text-center">
+            <Trophy className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
+            <p className="font-cinzel text-2xl">{completedProjects.length}</p>
+            <p className="font-crimson text-muted-foreground text-sm">Territories Conquered</p>
+          </div>
+          <div className="gothic-card p-6 text-center">
+            <Award className="h-8 w-8 mx-auto mb-2 text-blue-400" />
+            <p className="font-cinzel text-2xl">{completedTasks.length}</p>
+            <p className="font-crimson text-muted-foreground text-sm">Tasks Completed</p>
+          </div>
+          <div className="gothic-card p-6 text-center">
+            <Clock className="h-8 w-8 mx-auto mb-2 text-green-400" />
+            <p className="font-cinzel text-2xl">{formatTime(totalTimeLogged) || "0m"}</p>
+            <p className="font-crimson text-muted-foreground text-sm">Time Invested</p>
           </div>
         </div>
 
-        {/* Categorized Results */}
-        {hasCleaved && (
-          <div className="space-y-8 animate-fade-in">
-            <h3 className="font-cinzel text-lg text-center text-muted-foreground tracking-widest uppercase">
-              Revealed Patterns
-            </h3>
-            
-            {categorizedGroups.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="font-crimson text-muted-foreground italic">
-                  No patterns emerged. Add more resources to discover themes.
-                </p>
-              </div>
-            ) : (
-              <div className="grid gap-6">
-                {categorizedGroups.map((group) => (
-                  <div key={group.theme} className="gothic-card p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                      <h4 className="font-cinzel text-lg tracking-wide text-foreground">
-                        {group.theme}
-                      </h4>
-                      <Badge variant="secondary" className="font-crimson">
-                        {group.resources.length} {group.resources.length === 1 ? "resource" : "resources"}
-                      </Badge>
-                    </div>
-                    <ul className="space-y-2">
-                      {group.resources.map((resource) => (
-                        <li 
-                          key={resource.id} 
-                          className="font-crimson text-muted-foreground pl-4 border-l-2 border-border/30"
-                        >
-                          <span className="text-foreground">{resource.title}</span>
-                          {resource.description && (
-                            <span className="text-sm ml-2">— {resource.description}</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+        {/* Trophy Case - Completed Projects */}
+        <section>
+          <h2 className="font-cinzel text-xl tracking-wide mb-6 flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-yellow-500" />
+            Trophy Case
+          </h2>
+          
+          {allProjects.length === 0 ? (
+            <div className="gothic-card p-8 text-center">
+              <p className="font-crimson text-muted-foreground italic">
+                No territories claimed yet. Start your conquest!
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {allProjects.map((project) => {
+                const isCompleted = project.status === "completed";
+                return (
+                  <div
+                    key={project.id}
+                    className={`gothic-card p-4 text-center transition-all ${
+                      isCompleted
+                        ? "border-yellow-500/30 bg-yellow-500/5"
+                        : "opacity-40 grayscale"
+                    }`}
+                  >
+                    <Trophy
+                      className={`h-10 w-10 mx-auto mb-2 ${
+                        isCompleted ? "text-yellow-500" : "text-muted-foreground"
+                      }`}
+                    />
+                    <p className="font-cinzel text-sm truncate" title={project.name}>
+                      {project.name}
+                    </p>
+                    {isCompleted && (
+                      <p className="font-crimson text-xs text-yellow-500/70 mt-1">
+                        Conquered
+                      </p>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Medals & Gems - Completed Tasks */}
+        <section>
+          <h2 className="font-cinzel text-xl tracking-wide mb-6 flex items-center gap-2">
+            <Award className="h-5 w-5 text-blue-400" />
+            Medals & Gems
+          </h2>
+
+          {completedTasks.length === 0 ? (
+            <div className="gothic-card p-8 text-center">
+              <p className="font-crimson text-muted-foreground italic">
+                No tasks completed yet. Forge your first victory!
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {completedTasks.map((task, index) => {
+                // Alternate between medal and gem based on time logged
+                const hasSignificantTime = (task.time_logged || 0) >= 60;
+                const Icon = hasSignificantTime ? Gem : Award;
+                const iconColor = hasSignificantTime ? "text-purple-400" : "text-blue-400";
+                const borderColor = hasSignificantTime
+                  ? "border-purple-500/30"
+                  : "border-blue-500/30";
+
+                return (
+                  <div
+                    key={task.id}
+                    className={`gothic-card p-4 flex items-center gap-4 ${borderColor}`}
+                  >
+                    <div className="flex-shrink-0">
+                      <Icon className={`h-8 w-8 ${iconColor}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-cinzel text-sm truncate">{task.title}</p>
+                      {task.project_name && (
+                        <p className="font-crimson text-xs text-muted-foreground">
+                          {task.project_name}
+                        </p>
+                      )}
+                    </div>
+                    {task.time_logged && task.time_logged > 0 && (
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <Clock className="h-4 w-4" />
+                        <span className="font-crimson text-sm">
+                          {formatTime(task.time_logged)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
       </div>
     </PageLayout>
   );
