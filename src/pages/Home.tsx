@@ -1,43 +1,13 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { User, Session } from "@supabase/supabase-js";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
 
 const Home = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-        
-        if (!session) {
-          navigate("/auth?mode=login");
-        }
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-      
-      if (!session) {
-        navigate("/auth?mode=login");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+  const { user, loading } = useAuth();
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -49,19 +19,7 @@ const Home = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <svg className="animate-spin h-8 w-8 text-primary mx-auto mb-4" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          <p className="font-cinzel text-muted-foreground tracking-wider">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingSpinner />;
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -112,8 +70,8 @@ const Home = () => {
 
             {/* Dashboard Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-0 animate-fade-in-up" style={{ animationDelay: "0.4s" }}>
-              {/* Card 1 */}
-              <div className="gothic-card p-6 group hover:border-primary/50 transition-all duration-300">
+              {/* Chronicles - Resources */}
+              <Link to="/resources" className="gothic-card p-6 group hover:border-primary/50 transition-all duration-300 cursor-pointer">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-12 h-12 rounded-sm bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                     <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -123,12 +81,12 @@ const Home = () => {
                   <h3 className="font-cinzel text-lg tracking-wide text-foreground">Chronicles</h3>
                 </div>
                 <p className="font-crimson text-muted-foreground">
-                  Explore the ancient texts and histories of the realm. Discover forgotten lore.
+                  Your collection of sacred resources. Knowledge to guide your journey.
                 </p>
-              </div>
+              </Link>
 
-              {/* Card 2 */}
-              <div className="gothic-card p-6 group hover:border-primary/50 transition-all duration-300">
+              {/* Forge - Tasks */}
+              <Link to="/tasks" className="gothic-card p-6 group hover:border-primary/50 transition-all duration-300 cursor-pointer">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-12 h-12 rounded-sm bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                     <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -139,14 +97,14 @@ const Home = () => {
                   <h3 className="font-cinzel text-lg tracking-wide text-foreground">Forge</h3>
                 </div>
                 <p className="font-crimson text-muted-foreground">
-                  Craft your legend. Shape the artifacts that will define your journey.
+                  Tasks to be hammered into completion. Organize by territory.
                 </p>
-              </div>
+              </Link>
 
-              {/* Card 3 */}
-              <div className="gothic-card p-6 group hover:border-primary/50 transition-all duration-300">
+              {/* Order - Coming Soon */}
+              <div className="gothic-card p-6 group hover:border-border/50 transition-all duration-300 opacity-60">
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="w-12 h-12 rounded-sm bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                  <div className="w-12 h-12 rounded-sm bg-primary/10 flex items-center justify-center">
                     <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
@@ -154,12 +112,12 @@ const Home = () => {
                   <h3 className="font-cinzel text-lg tracking-wide text-foreground">Order</h3>
                 </div>
                 <p className="font-crimson text-muted-foreground">
-                  Join fellow travelers. Build alliances in the shadows of the realm.
+                  Join fellow travelers. <span className="italic">Coming soon...</span>
                 </p>
               </div>
 
-              {/* Card 4 */}
-              <div className="gothic-card p-6 group hover:border-primary/50 transition-all duration-300">
+              {/* Territories - Projects */}
+              <Link to="/projects" className="gothic-card p-6 group hover:border-primary/50 transition-all duration-300 cursor-pointer">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-12 h-12 rounded-sm bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                     <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -169,12 +127,12 @@ const Home = () => {
                   <h3 className="font-cinzel text-lg tracking-wide text-foreground">Territories</h3>
                 </div>
                 <p className="font-crimson text-muted-foreground">
-                  Traverse the dark lands. Uncover hidden paths and sacred grounds.
+                  The projects you've claimed in your conquest. Manage your domains.
                 </p>
-              </div>
+              </Link>
 
-              {/* Card 5 */}
-              <div className="gothic-card p-6 group hover:border-primary/50 transition-all duration-300">
+              {/* Achievements */}
+              <Link to="/achievements" className="gothic-card p-6 group hover:border-primary/50 transition-all duration-300 cursor-pointer">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-12 h-12 rounded-sm bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                     <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -184,14 +142,14 @@ const Home = () => {
                   <h3 className="font-cinzel text-lg tracking-wide text-foreground">Achievements</h3>
                 </div>
                 <p className="font-crimson text-muted-foreground">
-                  Mark your conquests. Earn the recognition of the realm.
+                  Discover patterns in your knowledge. Invoke the Cleave.
                 </p>
-              </div>
+              </Link>
 
-              {/* Card 6 */}
-              <div className="gothic-card p-6 group hover:border-primary/50 transition-all duration-300">
+              {/* Settings - Coming Soon */}
+              <div className="gothic-card p-6 group hover:border-border/50 transition-all duration-300 opacity-60">
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="w-12 h-12 rounded-sm bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                  <div className="w-12 h-12 rounded-sm bg-primary/10 flex items-center justify-center">
                     <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -200,7 +158,7 @@ const Home = () => {
                   <h3 className="font-cinzel text-lg tracking-wide text-foreground">Settings</h3>
                 </div>
                 <p className="font-crimson text-muted-foreground">
-                  Configure your sanctuary. Adjust the realm to your liking.
+                  Configure your sanctuary. <span className="italic">Coming soon...</span>
                 </p>
               </div>
             </div>
