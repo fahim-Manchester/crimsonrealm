@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useCleaveDismantle } from "@/hooks/useCleaveDismantle";
 import PageLayout from "@/components/layout/PageLayout";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
-import DataTable from "@/components/shared/DataTable";
+import GroupedDataTable from "@/components/shared/GroupedDataTable";
+import { CleaveControls } from "@/components/shared/CleaveControls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,7 +23,9 @@ interface Task {
   status: string | null;
   priority: string | null;
   project_id: string | null;
+  group_id: string | null;
   due_date: string | null;
+  time_logged: number | null;
   created_at: string;
 }
 
@@ -59,9 +63,10 @@ const Tasks = () => {
     priority: "medium",
     project_id: "",
     due_date: "",
+    time_logged: 0,
   });
 
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     const { data, error } = await supabase
       .from("tasks")
       .select("*")
@@ -72,7 +77,7 @@ const Tasks = () => {
     } else {
       setTasks(data || []);
     }
-  };
+  }, []);
 
   const fetchProjects = async () => {
     const { data, error } = await supabase
@@ -85,11 +90,24 @@ const Tasks = () => {
     }
   };
 
+  const {
+    groups,
+    cleaving,
+    loading: groupsLoading,
+    fetchGroups,
+    cleaveWithAI,
+    createManualGroup,
+    dismantleGroup,
+    dismantleAllGroups,
+    moveEntryToGroup,
+    renameGroup,
+  } = useCleaveDismantle<Task>("tasks", user?.id, fetchTasks);
+
   useEffect(() => {
     if (user) {
-      Promise.all([fetchTasks(), fetchProjects()]).finally(() => setLoading(false));
+      Promise.all([fetchTasks(), fetchProjects(), fetchGroups()]).finally(() => setLoading(false));
     }
-  }, [user]);
+  }, [user, fetchTasks, fetchGroups]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,6 +124,7 @@ const Tasks = () => {
       priority: formData.priority,
       project_id: formData.project_id === "none" ? null : formData.project_id || null,
       due_date: formData.due_date || null,
+      time_logged: formData.time_logged || 0,
       user_id: user!.id,
     };
 
@@ -145,6 +164,7 @@ const Tasks = () => {
       priority: task.priority || "medium",
       project_id: task.project_id || "",
       due_date: task.due_date ? task.due_date.split("T")[0] : "",
+      time_logged: task.time_logged || 0,
     });
     setDialogOpen(true);
   };
@@ -161,13 +181,21 @@ const Tasks = () => {
   };
 
   const resetForm = () => {
-    setFormData({ title: "", description: "", status: "pending", priority: "medium", project_id: "", due_date: "" });
+    setFormData({ title: "", description: "", status: "pending", priority: "medium", project_id: "", due_date: "", time_logged: 0 });
     setEditingTask(null);
   };
 
   const filteredTasks = filterProject === "all" 
     ? tasks 
     : tasks.filter(t => t.project_id === filterProject);
+
+  const formatTime = (minutes: number) => {
+    if (!minutes) return "—";
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours === 0) return `${mins}m`;
+    return `${hours}h ${mins}m`;
+  };
 
   const columns = [
     { key: "title" as keyof Task, label: "Task" },
@@ -198,6 +226,11 @@ const Tasks = () => {
       }
     },
     {
+      key: "time_logged" as keyof Task,
+      label: "Time",
+      render: (task: Task) => formatTime(task.time_logged || 0)
+    },
+    {
       key: "due_date" as keyof Task,
       label: "Due",
       render: (task: Task) => task.due_date 
@@ -212,22 +245,34 @@ const Tasks = () => {
     <PageLayout title="The Forge" subtitle="Tasks to be hammered into completion">
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row justify-between gap-4">
-          {/* Filter */}
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <Select value={filterProject} onValueChange={setFilterProject}>
-              <SelectTrigger className="w-48 bg-background/50 border-border/50">
-                <SelectValue placeholder="All Territories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Territories</SelectItem>
-                {projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Filter */}
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Select value={filterProject} onValueChange={setFilterProject}>
+                <SelectTrigger className="w-48 bg-background/50 border-border/50">
+                  <SelectValue placeholder="All Territories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Territories</SelectItem>
+                  {projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <CleaveControls
+              onCleaveAI={(numGroups, luckyMode) => cleaveWithAI(filteredTasks, numGroups, luckyMode)}
+              onCreateManualGroup={createManualGroup}
+              onDismantleAll={dismantleAllGroups}
+              hasGroups={groups.length > 0}
+              cleaving={cleaving}
+              loading={groupsLoading}
+              entryCount={filteredTasks.length}
+            />
           </div>
 
           {/* Add Button */}
@@ -322,15 +367,29 @@ const Tasks = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="due_date" className="font-cinzel text-sm">Due Date</Label>
-                  <Input
-                    id="due_date"
-                    type="date"
-                    value={formData.due_date}
-                    onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                    className="bg-background/50 border-border/50"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="due_date" className="font-cinzel text-sm">Due Date</Label>
+                    <Input
+                      id="due_date"
+                      type="date"
+                      value={formData.due_date}
+                      onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                      className="bg-background/50 border-border/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="time_logged" className="font-cinzel text-sm">Time (min)</Label>
+                    <Input
+                      id="time_logged"
+                      type="number"
+                      min={0}
+                      value={formData.time_logged}
+                      onChange={(e) => setFormData({ ...formData, time_logged: parseInt(e.target.value) || 0 })}
+                      className="bg-background/50 border-border/50"
+                      placeholder="0"
+                    />
+                  </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
                   <Button type="button" variant="ghost" onClick={() => setDialogOpen(false)}>
@@ -345,11 +404,15 @@ const Tasks = () => {
           </Dialog>
         </div>
 
-        <DataTable
+        <GroupedDataTable
           data={filteredTasks}
           columns={columns}
+          groups={groups}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          onDismantleGroup={dismantleGroup}
+          onMoveEntry={moveEntryToGroup}
+          onRenameGroup={renameGroup}
           emptyMessage="No tasks forged yet. Create your first task."
         />
       </div>
