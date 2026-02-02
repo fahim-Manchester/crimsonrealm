@@ -104,7 +104,7 @@ const Tasks = () => {
       description: formData.description.trim() || null,
       status: formData.status,
       priority: formData.priority,
-      project_id: formData.project_id || null,
+      project_id: formData.project_id === "none" ? null : formData.project_id || null,
       due_date: formData.due_date || null,
       user_id: user!.id,
     };
@@ -313,7 +313,7 @@ const Tasks = () => {
                       <SelectValue placeholder="Select territory..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
                       {projects.map((project) => (
                         <SelectItem key={project.id} value={project.id}>
                           {project.name}
