@@ -87,7 +87,7 @@ const Resources = () => {
       description: formData.description.trim() || null,
       url: formData.url.trim() || null,
       category: formData.category.trim() || null,
-      project_id: formData.project_id || null,
+      project_id: formData.project_id === "none" ? null : formData.project_id || null,
       user_id: user!.id,
     };
 
@@ -248,7 +248,7 @@ const Resources = () => {
                       <SelectValue placeholder="Select a territory..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
                       {projects.map((project) => (
                         <SelectItem key={project.id} value={project.id}>
                           {project.name}
