@@ -10,6 +10,7 @@ import Resources from "./pages/Resources";
 import Projects from "./pages/Projects";
 import Tasks from "./pages/Tasks";
 import Achievements from "./pages/Achievements";
+import Campaigns from "./pages/Campaigns";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,6 +29,7 @@ const App = () => (
           <Route path="/projects" element={<Projects />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/achievements" element={<Achievements />} />
+          <Route path="/campaigns" element={<Campaigns />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

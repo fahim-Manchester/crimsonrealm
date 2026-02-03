@@ -14,6 +14,94 @@ export type Database = {
   }
   public: {
     Tables: {
+      campaign_items: {
+        Row: {
+          campaign_id: string
+          completed: boolean | null
+          created_at: string
+          display_order: number | null
+          id: string
+          project_id: string | null
+          task_id: string | null
+        }
+        Insert: {
+          campaign_id: string
+          completed?: boolean | null
+          created_at?: string
+          display_order?: number | null
+          id?: string
+          project_id?: string | null
+          task_id?: string | null
+        }
+        Update: {
+          campaign_id?: string
+          completed?: boolean | null
+          created_at?: string
+          display_order?: number | null
+          id?: string
+          project_id?: string | null
+          task_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_items_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_items_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_items_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaigns: {
+        Row: {
+          created_at: string
+          difficulty: string | null
+          id: string
+          name: string
+          planned_time: number | null
+          status: string | null
+          time_spent: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          difficulty?: string | null
+          id?: string
+          name: string
+          planned_time?: number | null
+          status?: string | null
+          time_spent?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          difficulty?: string | null
+          id?: string
+          name?: string
+          planned_time?: number | null
+          status?: string | null
+          time_spent?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       entry_groups: {
         Row: {
           created_at: string
