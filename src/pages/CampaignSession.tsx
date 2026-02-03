@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Play, Pause, CheckCircle, Plus, LogOut } from "lucide-react";
+import { ArrowLeft, Play, Pause, CheckCircle, Plus, LogOut, RotateCcw, Ban } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Button } from "@/components/ui/button";
@@ -35,14 +35,19 @@ const CampaignSession = () => {
     items,
     sessionState,
     loading: itemsLoading,
+    itemSessionTimes,
     startTimer,
     pauseTimer,
     completeCurrentTask,
+    abandonCurrentTask,
     endSession,
+    startNewSession,
     reorderItems,
     addTaskToCampaign,
     addProjectToCampaign,
-    setCurrentTaskIndex
+    setCurrentTaskIndex,
+    uncheckItem,
+    updateItemTimeManually
   } = useCampaignSession(campaign);
 
   const sensors = useSensors(
@@ -62,7 +67,7 @@ const CampaignSession = () => {
         .select("*")
         .eq("id", id)
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
       if (error || !data) {
         toast.error("Campaign not found");
@@ -102,9 +107,19 @@ const CampaignSession = () => {
     navigate("/campaigns");
   };
 
+  const handleNewSession = async () => {
+    await startNewSession();
+    toast.success("New session started!");
+  };
+
   const handleCompleteTask = async () => {
     await completeCurrentTask();
     toast.success("Task completed! Moving to next.");
+  };
+
+  const handleAbandonTask = async () => {
+    await abandonCurrentTask();
+    toast.info("Task abandoned. Moving to next.");
   };
 
   const handleAddTask = async (taskId: string) => {
@@ -117,12 +132,24 @@ const CampaignSession = () => {
     toast.success("Territory added to campaign");
   };
 
+  const handleUncheckItem = async (itemId: string) => {
+    await uncheckItem(itemId);
+    toast.info("Item unchecked");
+  };
+
+  const handleUpdateItemTime = async (itemId: string, minutes: number) => {
+    await updateItemTimeManually(itemId, minutes);
+    toast.success("Time updated");
+  };
+
   if (authLoading || loading) return <LoadingSpinner />;
   if (!campaign) return null;
 
   const difficulty = difficultyConfig[campaign.difficulty] || difficultyConfig.medium;
   const existingTaskIds = items.filter(i => i.task_id).map(i => i.task_id!);
   const existingProjectIds = items.filter(i => i.project_id).map(i => i.project_id!);
+  const currentItem = items[sessionState.currentTaskIndex];
+  const canComplete = sessionState.isRunning && currentItem && currentItem.status !== 'completed' && currentItem.status !== 'abandoned';
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -163,19 +190,40 @@ const CampaignSession = () => {
             </div>
           </div>
           
-          <Button
-            variant="outline"
-            onClick={handleEndSession}
-            className="border-destructive/50 text-destructive hover:bg-destructive/10"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            End Session
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleNewSession}
+              className="border-primary/50 text-primary hover:bg-primary/10"
+              disabled={sessionState.isRunning}
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              New Session
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleEndSession}
+              className="border-destructive/50 text-destructive hover:bg-destructive/10"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              End Session
+            </Button>
+          </div>
         </header>
 
         {/* Clocks Section */}
         <section className="px-4 md:px-8 py-6 md:py-10">
-          <div className="grid grid-cols-3 gap-3 md:gap-6 max-w-3xl mx-auto">
+          <div className="grid grid-cols-4 gap-3 md:gap-6 max-w-4xl mx-auto">
+            {/* Session Number */}
+            <div className="flex flex-col items-center justify-center p-3 md:p-4 rounded-lg bg-card/30 border border-border/30">
+              <span className="text-2xl md:text-4xl font-cinzel font-bold text-primary">
+                #{sessionState.currentSessionNumber}
+              </span>
+              <span className="text-[10px] md:text-xs text-muted-foreground font-cinzel uppercase tracking-widest mt-1">
+                Session
+              </span>
+            </div>
             <SessionClock
               label="Campaign Total"
               timeInSeconds={totalTimeSeconds}
@@ -199,7 +247,7 @@ const CampaignSession = () => {
 
         {/* Timer Controls */}
         <section className="px-4 md:px-8 pb-6">
-          <div className="flex justify-center gap-4">
+          <div className="flex justify-center gap-4 flex-wrap">
             <Button
               size="lg"
               onClick={sessionState.isRunning ? pauseTimer : startTimer}
@@ -221,16 +269,27 @@ const CampaignSession = () => {
               )}
             </Button>
             
-            {sessionState.isRunning && items[sessionState.currentTaskIndex] && !items[sessionState.currentTaskIndex].completed && (
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={handleCompleteTask}
-                className="border-accent/50 hover:bg-accent/10"
-              >
-                <CheckCircle className="w-5 h-5 mr-2 text-accent" />
-                Complete Task
-              </Button>
+            {canComplete && (
+              <>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={handleCompleteTask}
+                  className="border-accent/50 hover:bg-accent/10"
+                >
+                  <CheckCircle className="w-5 h-5 mr-2 text-accent" />
+                  Complete Task
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={handleAbandonTask}
+                  className="border-destructive/50 hover:bg-destructive/10"
+                >
+                  <Ban className="w-5 h-5 mr-2 text-destructive" />
+                  Abandon
+                </Button>
+              </>
             )}
           </div>
         </section>
@@ -287,6 +346,13 @@ const CampaignSession = () => {
                         item={item}
                         isCurrentTask={index === sessionState.currentTaskIndex}
                         onSelect={() => setCurrentTaskIndex(index)}
+                        onUncheck={() => handleUncheckItem(item.id)}
+                        onUpdateTime={(mins) => handleUpdateItemTime(item.id, mins)}
+                        sessionTimeSeconds={
+                          index === sessionState.currentTaskIndex 
+                            ? sessionState.taskTime 
+                            : itemSessionTimes[item.id] || 0
+                        }
                       />
                     ))}
                   </div>

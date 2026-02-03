@@ -21,11 +21,17 @@ const Campaigns = () => {
     updateCampaignTimeSpent,
     updateCampaignStatus,
     deleteCampaign,
-    fetchCampaignItems
+    fetchCampaignItems,
+    refreshCampaigns
   } = useCampaigns();
 
   const [showCreator, setShowCreator] = useState(false);
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
+
+  // Refresh data (used by CampaignCreator when quick-adding)
+  const handleRefreshData = useCallback(() => {
+    refreshCampaigns();
+  }, [refreshCampaigns]);
 
   const handleCreateCampaign = async (
     name: string,
@@ -199,6 +205,7 @@ const Campaigns = () => {
             projects={availableProjects}
             onCampaignCreated={handleCreateCampaign}
             onClose={() => setShowCreator(false)}
+            onRefreshData={handleRefreshData}
           />
         </DialogContent>
       </Dialog>

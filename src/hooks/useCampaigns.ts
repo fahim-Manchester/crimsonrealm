@@ -11,6 +11,7 @@ export interface Campaign {
   planned_time: number;
   time_spent: number;
   status: string;
+  session_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -23,6 +24,9 @@ export interface CampaignItem {
   display_order: number;
   completed: boolean;
   time_spent: number | null;
+  status: string | null;
+  completed_session: number | null;
+  parent_item_id: string | null;
   created_at: string;
   task?: {
     id: string;
