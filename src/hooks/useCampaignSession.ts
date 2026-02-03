@@ -34,7 +34,7 @@ export function useCampaignSession(campaign: Campaign | null) {
       .select(`
         *,
         task:tasks(id, title, description, status, priority, time_logged),
-        project:projects(id, name, description, status)
+        project:projects(id, name, description, status, time_spent)
       `)
       .eq("campaign_id", campaign.id)
       .order("display_order", { ascending: true });
@@ -82,11 +82,35 @@ export function useCampaignSession(campaign: Campaign | null) {
     const currentItem = items[sessionState.currentTaskIndex];
     if (!currentItem) return;
 
-    // Mark item as completed
+    const timeSpentSeconds = sessionState.taskTime;
+    const timeSpentMinutes = Math.ceil(timeSpentSeconds / 60);
+
+    // Save time to campaign_item
     await supabase
       .from("campaign_items")
-      .update({ completed: true })
+      .update({ 
+        completed: true,
+        time_spent: (currentItem.time_spent || 0) + timeSpentSeconds
+      })
       .eq("id", currentItem.id);
+
+    // If it's a task, add time to the task's time_logged
+    if (currentItem.task_id && currentItem.task) {
+      const currentTaskTime = currentItem.task.time_logged || 0;
+      await supabase
+        .from("tasks")
+        .update({ time_logged: currentTaskTime + timeSpentMinutes })
+        .eq("id", currentItem.task_id);
+    }
+
+    // If it's a project, add time to the project's time_spent
+    if (currentItem.project_id && currentItem.project) {
+      const currentProjectTime = (currentItem.project as any).time_spent || 0;
+      await supabase
+        .from("projects")
+        .update({ time_spent: currentProjectTime + timeSpentMinutes })
+        .eq("id", currentItem.project_id);
+    }
 
     // Reset task timer and move to next
     setSessionState(prev => ({
@@ -95,11 +119,13 @@ export function useCampaignSession(campaign: Campaign | null) {
       currentTaskIndex: Math.min(prev.currentTaskIndex + 1, items.length - 1)
     }));
 
-    // Update local items
+    // Update local items with new time
     setItems(prev => prev.map(item => 
-      item.id === currentItem.id ? { ...item, completed: true } : item
+      item.id === currentItem.id 
+        ? { ...item, completed: true, time_spent: (item.time_spent || 0) + timeSpentSeconds } 
+        : item
     ));
-  }, [items, sessionState.currentTaskIndex]);
+  }, [items, sessionState.currentTaskIndex, sessionState.taskTime]);
 
   // End session and save time to database
   const endSession = useCallback(async () => {
@@ -151,7 +177,7 @@ export function useCampaignSession(campaign: Campaign | null) {
       .select(`
         *,
         task:tasks(id, title, description, status, priority, time_logged),
-        project:projects(id, name, description, status)
+        project:projects(id, name, description, status, time_spent)
       `)
       .single();
 
@@ -184,7 +210,7 @@ export function useCampaignSession(campaign: Campaign | null) {
       .select(`
         *,
         task:tasks(id, title, description, status, priority, time_logged),
-        project:projects(id, name, description, status)
+        project:projects(id, name, description, status, time_spent)
       `)
       .single();
 

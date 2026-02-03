@@ -22,6 +22,7 @@ export interface CampaignItem {
   project_id: string | null;
   display_order: number;
   completed: boolean;
+  time_spent: number | null;
   created_at: string;
   task?: {
     id: string;
@@ -36,6 +37,7 @@ export interface CampaignItem {
     name: string;
     description: string | null;
     status: string | null;
+    time_spent: number | null;
   };
 }
 
@@ -53,6 +55,7 @@ export interface Project {
   name: string;
   description: string | null;
   status: string | null;
+  time_spent: number | null;
 }
 
 export function useCampaigns() {
@@ -101,7 +104,7 @@ export function useCampaigns() {
 
     const { data, error } = await supabase
       .from("projects")
-      .select("id, name, description, status")
+      .select("id, name, description, status, time_spent")
       .eq("user_id", user.id)
       .neq("status", "completed")
       .order("created_at", { ascending: false });
@@ -119,7 +122,7 @@ export function useCampaigns() {
       .select(`
         *,
         task:tasks(id, title, description, status, priority, time_logged),
-        project:projects(id, name, description, status)
+        project:projects(id, name, description, status, time_spent)
       `)
       .eq("campaign_id", campaignId)
       .order("display_order", { ascending: true });
