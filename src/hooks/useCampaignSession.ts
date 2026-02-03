@@ -318,7 +318,7 @@ export function useCampaignSession(campaign: Campaign | null) {
   // Update item time manually
   const updateItemTimeManually = useCallback(async (itemId: string, newTimeMinutes: number) => {
     const item = items.find(i => i.id === itemId);
-    if (!item) return;
+    if (!item || !campaign) return;
 
     const newTimeSeconds = newTimeMinutes * 60;
     const oldTimeSeconds = item.time_spent || 0;
@@ -338,11 +338,24 @@ export function useCampaignSession(campaign: Campaign | null) {
     const parentProjectId = findParentProjectId(item);
     if (parentProjectId) await incrementProjectMinutes(parentProjectId, timeDiffMinutes);
 
+    // Update campaign total time with the difference
+    const newCampaignTotal = (campaign.time_spent || 0) + timeDiffMinutes;
+    await supabase
+      .from("campaigns")
+      .update({ time_spent: newCampaignTotal })
+      .eq("id", campaign.id);
+
     // Update local state
     setItems(prev => prev.map(i => 
       i.id === itemId ? { ...i, time_spent: newTimeSeconds } : i
     ));
-  }, [items]);
+
+    // Update campaign total in session state
+    setSessionState(prev => ({
+      ...prev,
+      campaignTotalTime: newCampaignTotal
+    }));
+  }, [items, campaign]);
 
   const setItemParent = useCallback(async (itemId: string, parentItemId: string | null) => {
     const item = items.find((i) => i.id === itemId);
