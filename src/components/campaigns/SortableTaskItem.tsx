@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, forwardRef } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -39,7 +39,7 @@ const formatTimeMinutes = (seconds: number | null) => {
   return `${hours}h ${remainingMins}m`;
 };
 
-export function SortableTaskItem({ 
+export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps>(function SortableTaskItem({ 
   item, 
   isCurrentTask, 
   onSelect, 
@@ -50,7 +50,7 @@ export function SortableTaskItem({
   displayTimeSeconds,
   showAggregatedTime = false,
   nestDropId
-}: SortableTaskItemProps) {
+}, _ref) {
   const [isEditingTime, setIsEditingTime] = useState(false);
   const [editTimeValue, setEditTimeValue] = useState("");
 
@@ -138,7 +138,7 @@ export function SortableTaskItem({
         <div
           ref={setNestRef}
           className={cn(
-            "absolute inset-0 rounded-sm",
+            "absolute inset-0 rounded-sm pointer-events-none",
             isNestOver && "ring-2 ring-accent/40"
           )}
           aria-hidden="true"
@@ -263,4 +263,4 @@ export function SortableTaskItem({
       )}
     </div>
   );
-}
+});
