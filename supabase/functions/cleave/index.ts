@@ -78,18 +78,57 @@ serve(async (req) => {
   }
 
   try {
-    const { entries, section, numGroups, luckyMode, userId } = await req.json() as CleaveRequest;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Supabase configuration missing");
     }
+
+    // Authenticate user from JWT
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      console.error("Missing or invalid Authorization header");
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await supabaseClient.auth.getClaims(token);
+    
+    if (claimsError || !claimsData?.claims) {
+      console.error("JWT verification failed:", claimsError?.message);
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Extract verified user ID from JWT claims
+    const userId = claimsData.claims.sub as string;
+    if (!userId) {
+      console.error("No user ID in JWT claims");
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`Authenticated user: ${userId}`);
+
+    const { entries, section, numGroups, luckyMode } = await req.json() as CleaveRequest;
 
     if (!entries || entries.length === 0) {
       return new Response(
@@ -101,22 +140,20 @@ serve(async (req) => {
     // Create admin client for usage tracking
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Check usage limit if userId is provided
-    if (userId) {
-      const { allowed, count } = await checkUsageLimit(supabaseAdmin, userId);
-      
-      if (!allowed) {
-        console.log(`User ${userId} exceeded daily limit: ${count}/${DAILY_AI_LIMIT}`);
-        return new Response(
-          JSON.stringify({
-            error: `Daily AI limit reached (${DAILY_AI_LIMIT}/day). Resets at midnight UTC.`,
-            code: "DAILY_LIMIT_EXCEEDED",
-            count,
-            limit: DAILY_AI_LIMIT,
-          }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+    // Check usage limit with verified user ID
+    const { allowed, count } = await checkUsageLimit(supabaseAdmin, userId);
+    
+    if (!allowed) {
+      console.log(`User ${userId} exceeded daily limit: ${count}/${DAILY_AI_LIMIT}`);
+      return new Response(
+        JSON.stringify({
+          error: `Daily AI limit reached (${DAILY_AI_LIMIT}/day). Resets at midnight UTC.`,
+          code: "DAILY_LIMIT_EXCEEDED",
+          count,
+          limit: DAILY_AI_LIMIT,
+        }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Build entry descriptions for the AI
@@ -219,10 +256,8 @@ The entryIds should be the numbers (1-indexed) from the list above.`;
       entryIds: group.entryIds.map((idx: number) => entries[idx - 1]?.id).filter(Boolean),
     }));
 
-    // Log usage after successful AI call
-    if (userId) {
-      await logUsage(supabaseAdmin, userId);
-    }
+    // Log usage after successful AI call (userId is always verified now)
+    await logUsage(supabaseAdmin, userId);
 
     return new Response(
       JSON.stringify({ groups: groupsWithIds }),
