@@ -72,7 +72,7 @@ export function AddItemDialog({
       // Fetch available projects
       supabase
         .from("projects")
-        .select("id, name, description, status")
+        .select("id, name, description, status, time_spent")
         .eq("user_id", user.id)
         .neq("status", "completed")
         .order("created_at", { ascending: false })

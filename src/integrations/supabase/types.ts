@@ -23,6 +23,7 @@ export type Database = {
           id: string
           project_id: string | null
           task_id: string | null
+          time_spent: number | null
         }
         Insert: {
           campaign_id: string
@@ -32,6 +33,7 @@ export type Database = {
           id?: string
           project_id?: string | null
           task_id?: string | null
+          time_spent?: number | null
         }
         Update: {
           campaign_id?: string
@@ -41,6 +43,7 @@ export type Database = {
           id?: string
           project_id?: string | null
           task_id?: string | null
+          time_spent?: number | null
         }
         Relationships: [
           {
@@ -140,6 +143,7 @@ export type Database = {
           id: string
           name: string
           status: string | null
+          time_spent: number | null
           updated_at: string
           user_id: string
         }
@@ -150,6 +154,7 @@ export type Database = {
           id?: string
           name: string
           status?: string | null
+          time_spent?: number | null
           updated_at?: string
           user_id: string
         }
@@ -160,6 +165,7 @@ export type Database = {
           id?: string
           name?: string
           status?: string | null
+          time_spent?: number | null
           updated_at?: string
           user_id?: string
         }
