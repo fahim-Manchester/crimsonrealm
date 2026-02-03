@@ -139,6 +139,29 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
     }
   };
 
+  // Visual styling based on item type
+  const getItemStyles = () => {
+    if (isCompleted) return "bg-accent/10 border-accent/30";
+    if (isAbandoned) return "bg-destructive/10 border-destructive/30";
+    if (isCurrentTask) return "border-primary bg-primary/20 ring-2 ring-primary/30";
+    
+    // Different styles for each type
+    if (isTemporary && item.temporary_type === 'task') {
+      // Pop-up Quest: warm amber/orange tint
+      return "bg-amber-500/10 border-amber-500/40 hover:border-amber-500/60";
+    }
+    if (isTemporary && item.temporary_type === 'project') {
+      // Hidden Territory: mystical purple tint
+      return "bg-purple-500/10 border-purple-500/40 hover:border-purple-500/60";
+    }
+    if (isTerritory) {
+      // Regular Territory: green/accent tint
+      return "bg-accent/5 border-accent/40 hover:border-accent/60";
+    }
+    // Regular Task: default card style
+    return "border-border/50 hover:border-border bg-card/50";
+  };
+
   return (
     <div style={{ marginLeft: indentLevel * 24 }}>
       <div
@@ -148,14 +171,8 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
           "relative flex items-center gap-3 p-3 rounded-sm border transition-all",
           isDragging && "opacity-50 z-50",
           (isCompleted || isAbandoned) && "opacity-60",
-          isCompleted && "bg-accent/10",
-          isAbandoned && "bg-destructive/10",
-          isTerritory && !isCompleted && !isAbandoned && "bg-accent/5 border-accent/40",
-          isCurrentTask 
-            ? "border-primary bg-primary/20 ring-2 ring-primary/30 cursor-default" 
-            : (isCompleted || isAbandoned)
-              ? "border-border/30 cursor-default"
-              : "border-border/50 hover:border-border bg-card/50 cursor-pointer"
+          getItemStyles(),
+          (isCompleted || isAbandoned || isCurrentTask) ? "cursor-default" : "cursor-pointer"
         )}
         onClick={handleClick}
       >
@@ -195,20 +212,32 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
           <GripVertical className="w-4 h-4 text-muted-foreground" />
         </button>
       
+        {/* Icon based on item type - 4 distinct icons */}
         <span className="text-sm">
-          {isTask ? "⚒️" : "🗺️"}
+          {isTemporary && item.temporary_type === 'task' && "⚡"}
+          {isTemporary && item.temporary_type === 'project' && "🌑"}
+          {!isTemporary && isTask && "⚒️"}
+          {!isTemporary && isTerritory && "🗺️"}
         </span>
 
-        {/* Temporary item indicator with Mark button */}
+        {/* Mark button for temporary items */}
         {isTemporary && onMarkPermanent && !isDragActive && (
           <Button
             size="icon"
             variant="ghost"
-            className="h-6 w-6 opacity-70 hover:opacity-100 bg-primary/10 hover:bg-primary/20"
+            className={cn(
+              "h-6 w-6 opacity-80 hover:opacity-100",
+              item.temporary_type === 'task' 
+                ? "bg-amber-500/20 hover:bg-amber-500/30" 
+                : "bg-purple-500/20 hover:bg-purple-500/30"
+            )}
             onClick={handleMarkPermanent}
-            title={`Mark this ${isTask ? 'Quest' : 'Territory'} as permanent`}
+            title={`Save this ${item.temporary_type === 'task' ? 'Pop-up Quest' : 'Hidden Territory'} permanently`}
           >
-            <Bookmark className="w-3 h-3 text-primary" />
+            <Bookmark className={cn(
+              "w-3 h-3",
+              item.temporary_type === 'task' ? "text-amber-500" : "text-purple-500"
+            )} />
           </Button>
         )}
       
@@ -216,10 +245,20 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
           "flex-1 font-crimson text-sm truncate",
           isCompleted && "line-through",
           isAbandoned && "line-through text-muted-foreground",
-          isTemporary && "italic text-muted-foreground"
+          isTemporary && item.temporary_type === 'task' && "text-amber-200/90",
+          isTemporary && item.temporary_type === 'project' && "text-purple-200/90"
         )}>
           {title}
-          {isTemporary && <span className="text-[10px] ml-1 text-primary">(temp)</span>}
+          {isTemporary && (
+            <span className={cn(
+              "text-[10px] ml-1.5 px-1.5 py-0.5 rounded-sm font-cinzel tracking-wide",
+              item.temporary_type === 'task' 
+                ? "bg-amber-500/20 text-amber-400" 
+                : "bg-purple-500/20 text-purple-400"
+            )}>
+              {item.temporary_type === 'task' ? 'POP-UP' : 'HIDDEN'}
+            </span>
+          )}
         </span>
 
         {/* Time display/edit */}
