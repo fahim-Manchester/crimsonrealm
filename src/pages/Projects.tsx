@@ -22,6 +22,7 @@ interface Project {
   description: string | null;
   status: string | null;
   group_id: string | null;
+  time_spent: number | null;
   created_at: string;
 }
 
@@ -145,9 +146,27 @@ const Projects = () => {
     setEditingProject(null);
   };
 
+  const formatTime = (minutes: number | null) => {
+    if (!minutes || minutes === 0) return "—";
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours === 0) return `${mins}m`;
+    if (mins === 0) return `${hours}h`;
+    return `${hours}h ${mins}m`;
+  };
+
   const columns = [
     { key: "name" as keyof Project, label: "Name" },
     { key: "description" as keyof Project, label: "Description" },
+    { 
+      key: "time_spent" as keyof Project, 
+      label: "Time Spent",
+      render: (project: Project) => (
+        <span className="font-crimson text-sm text-muted-foreground">
+          {formatTime(project.time_spent)}
+        </span>
+      )
+    },
     { 
       key: "status" as keyof Project, 
       label: "Status",
