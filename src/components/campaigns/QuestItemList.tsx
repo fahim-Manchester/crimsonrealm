@@ -1,14 +1,12 @@
-import { useMemo } from "react";
-import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { useMemo, useState } from "react";
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { useDroppable } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { CampaignItem } from "@/hooks/useCampaigns";
 import { SortableTaskItem } from "@/components/campaigns/SortableTaskItem";
 
 type DropId = string;
 const nestId = (itemId: string) => `nest:${itemId}`;
-const ROOT_DROP_ID = "root";
 
 function isNestDropId(id: DropId): id is `nest:${string}` {
   return typeof id === "string" && id.startsWith("nest:");
@@ -69,11 +67,6 @@ function sumDescendantSeconds(
   return sum;
 }
 
-function RootDropZone() {
-  const { setNodeRef } = useDroppable({ id: ROOT_DROP_ID });
-  return <div ref={setNodeRef} className="absolute inset-0" />;
-}
-
 interface QuestItemListProps {
   items: CampaignItem[];
   currentIndex: number;
@@ -95,8 +88,12 @@ export function QuestItemList({
   onUncheckItem,
   onUpdateTime,
 }: QuestItemListProps) {
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 }
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -116,7 +113,12 @@ export function QuestItemList({
     return map;
   }, [items, childrenMap, byId, itemSessionTimes]);
 
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(String(event.active.id));
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDragId(null);
     const { active, over } = event;
     if (!over) return;
 
@@ -124,20 +126,23 @@ export function QuestItemList({
     const overId = String(over.id);
     if (activeId === overId) return;
 
-    // Nesting drop target
+    // Nesting drop target - drop on right side of an item
     if (isNestDropId(overId)) {
       const parentId = unwrapNestDropId(overId);
-      if (parentId !== activeId) onSetParent(activeId, parentId);
+      if (parentId !== activeId) {
+        onSetParent(activeId, parentId);
+      }
       return;
     }
 
-    // Dropped on root drop zone: un-nest
-    if (overId === ROOT_DROP_ID) {
-      onSetParent(activeId, null);
-      return;
-    }
+    // Plain sortable reorder - only within same level
+    const activeItem = byId.get(activeId);
+    const overItem = byId.get(overId);
+    if (!activeItem || !overItem) return;
+    
+    // Only reorder if both items have the same parent (same level)
+    if (activeItem.parent_item_id !== overItem.parent_item_id) return;
 
-    // Plain sortable reorder
     const oldIndex = items.findIndex((i) => i.id === activeId);
     const newIndex = items.findIndex((i) => i.id === overId);
     if (oldIndex < 0 || newIndex < 0) return;
@@ -145,12 +150,21 @@ export function QuestItemList({
     onReorder(newItems);
   };
 
+  const handleDragCancel = () => {
+    setActiveDragId(null);
+  };
+
+  const isDragActive = activeDragId !== null;
+
   return (
     <div className="relative">
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        {/* Allows dropping on empty space to un-nest */}
-        <RootDropZone />
-
+      <DndContext 
+        sensors={sensors} 
+        collisionDetection={closestCenter} 
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2 relative">
             {items.map((item, index) => {
@@ -168,14 +182,25 @@ export function QuestItemList({
                   displayTimeSeconds={displaySeconds}
                   onSelect={() => onSelectIndex(index)}
                   onUncheck={() => onUncheckItem(item.id)}
+                  onUnembed={indentLevel > 0 ? () => onSetParent(item.id, null) : undefined}
                   onUpdateTime={(mins) => onUpdateTime(item.id, mins)}
                   sessionTimeSeconds={index === currentIndex ? (itemSessionTimes[item.id] || 0) : 0}
                   nestDropId={nestId(item.id)}
+                  isDragActive={isDragActive}
                 />
               );
             })}
           </div>
         </SortableContext>
+        <DragOverlay>
+          {activeDragId ? (
+            <div className="p-3 rounded-sm border border-primary bg-card/90 shadow-lg opacity-90">
+              <span className="font-crimson text-sm">
+                {byId.get(activeDragId)?.task?.title || byId.get(activeDragId)?.project?.name || "Item"}
+              </span>
+            </div>
+          ) : null}
+        </DragOverlay>
       </DndContext>
     </div>
   );

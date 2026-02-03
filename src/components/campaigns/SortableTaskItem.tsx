@@ -2,7 +2,7 @@ import { useState, forwardRef } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, CheckCircle, Ban, Clock, Edit2, X, Check } from "lucide-react";
+import { GripVertical, CheckCircle, Ban, Clock, Edit2, X, Check, CornerLeftUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,13 @@ interface SortableTaskItemProps {
   onSelect: () => void;
   onUncheck?: () => void;
   onUpdateTime?: (minutes: number) => void;
+  onUnembed?: () => void;
   sessionTimeSeconds?: number;
   indentLevel?: number;
   displayTimeSeconds?: number;
   showAggregatedTime?: boolean;
   nestDropId?: string;
+  isDragActive?: boolean;
 }
 
 const formatTime = (seconds: number | null) => {
@@ -45,11 +47,13 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
   onSelect, 
   onUncheck,
   onUpdateTime,
+  onUnembed,
   sessionTimeSeconds = 0,
   indentLevel = 0,
   displayTimeSeconds,
   showAggregatedTime = false,
-  nestDropId
+  nestDropId,
+  isDragActive = false
 }, _ref) {
   const [isEditingTime, setIsEditingTime] = useState(false);
   const [editTimeValue, setEditTimeValue] = useState("");
@@ -65,7 +69,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
 
   const { setNodeRef: setNestRef, isOver: isNestOver } = useDroppable({
     id: nestDropId || `nest:${item.id}`,
-    disabled: !nestDropId,
+    disabled: !nestDropId || isDragging,
   });
 
   const style = {
@@ -79,6 +83,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
   const isCompleted = item.status === 'completed';
   const isAbandoned = item.status === 'abandoned';
   const totalTimeSpent = displayTimeSeconds ?? ((item.time_spent || 0) + sessionTimeSeconds);
+  const isNested = indentLevel > 0;
 
   const handleTimeEditStart = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -108,16 +113,21 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
     }
   };
 
+  const handleUnembed = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onUnembed) {
+      onUnembed();
+    }
+  };
+
   const handleClick = () => {
     if (!isCompleted && !isAbandoned) {
       onSelect();
     }
   };
 
-  const indentStyle = indentLevel > 0 ? { marginLeft: indentLevel * 24 } : undefined;
-
   return (
-    <div style={indentStyle}>
+    <div style={{ marginLeft: indentLevel * 24 }}>
       <div
         ref={setNodeRef}
         style={style}
@@ -136,131 +146,146 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
         )}
         onClick={handleClick}
       >
-        {/* Nest drop zone (visible when dragging over) */}
-        {nestDropId && (
+        {/* Nest drop zone - right 25% of the item, only interactive during drag */}
+        {nestDropId && isDragActive && !isDragging && (
           <div
             ref={setNestRef}
             className={cn(
-              "absolute inset-0 rounded-sm pointer-events-none",
-              isNestOver && "ring-2 ring-accent/40"
+              "absolute right-0 top-0 bottom-0 w-1/4 rounded-r-sm z-10 transition-colors",
+              isNestOver 
+                ? "bg-accent/30 ring-2 ring-accent" 
+                : "bg-accent/10 border-l border-dashed border-accent/40"
             )}
             aria-hidden="true"
           />
         )}
 
-        <button
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted/50 rounded"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <GripVertical className="w-4 h-4 text-muted-foreground" />
-      </button>
-      
-      <span className="text-sm">
-        {isTask ? "⚒️" : "🗺️"}
-      </span>
-      
-      <span className={cn(
-        "flex-1 font-crimson text-sm truncate",
-        isCompleted && "line-through",
-        isAbandoned && "line-through text-muted-foreground"
-      )}>
-        {title}
-      </span>
+        {/* Unembed button for nested items */}
+        {isNested && onUnembed && !isDragActive && (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6 -ml-1 opacity-50 hover:opacity-100"
+            onClick={handleUnembed}
+            title="Unembed from parent"
+          >
+            <CornerLeftUp className="w-3 h-3 text-muted-foreground" />
+          </Button>
+        )}
 
-      {/* Time display/edit */}
-      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-        {isEditingTime ? (
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted/50 rounded"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <GripVertical className="w-4 h-4 text-muted-foreground" />
+        </button>
+      
+        <span className="text-sm">
+          {isTask ? "⚒️" : "🗺️"}
+        </span>
+      
+        <span className={cn(
+          "flex-1 font-crimson text-sm truncate",
+          isCompleted && "line-through",
+          isAbandoned && "line-through text-muted-foreground"
+        )}>
+          {title}
+        </span>
+
+        {/* Time display/edit */}
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          {isEditingTime ? (
+            <div className="flex items-center gap-1">
+              <Input
+                type="number"
+                min={0}
+                value={editTimeValue}
+                onChange={(e) => setEditTimeValue(e.target.value)}
+                className="w-16 h-6 text-xs px-1"
+                autoFocus
+              />
+              <span className="text-xs text-muted-foreground">min</span>
+              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleTimeEditSave}>
+                <Check className="w-3 h-3 text-accent" />
+              </Button>
+              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleTimeEditCancel}>
+                <X className="w-3 h-3 text-muted-foreground" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              {totalTimeSpent > 0 && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {formatTimeMinutes(totalTimeSpent)}{showAggregatedTime ? " total" : ""}
+                </span>
+              )}
+              {onUpdateTime && !isCurrentTask && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 opacity-50 hover:opacity-100"
+                  onClick={handleTimeEditStart}
+                >
+                  <Edit2 className="w-3 h-3" />
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Session time indicator for current task */}
+        {isCurrentTask && sessionTimeSeconds > 0 && (
+          <span className="text-xs text-primary font-mono">
+            +{formatTime(sessionTimeSeconds)}
+          </span>
+        )}
+      
+        {isCompleted && (
           <div className="flex items-center gap-1">
-            <Input
-              type="number"
-              min={0}
-              value={editTimeValue}
-              onChange={(e) => setEditTimeValue(e.target.value)}
-              className="w-16 h-6 text-xs px-1"
-              autoFocus
-            />
-            <span className="text-xs text-muted-foreground">min</span>
-            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleTimeEditSave}>
-              <Check className="w-3 h-3 text-accent" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleTimeEditCancel}>
-              <X className="w-3 h-3 text-muted-foreground" />
-            </Button>
-          </div>
-        ) : (
-          <>
-            {totalTimeSpent > 0 && (
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                {formatTimeMinutes(totalTimeSpent)}{showAggregatedTime ? " total" : ""}
-              </span>
+            <CheckCircle className="w-4 h-4 text-accent" />
+            {item.completed_session && (
+              <span className="text-[10px] text-muted-foreground">S{item.completed_session}</span>
             )}
-            {onUpdateTime && !isCurrentTask && (
+            {onUncheck && (
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-6 w-6 opacity-50 hover:opacity-100"
-                onClick={handleTimeEditStart}
+                className="h-5 w-5 ml-1 opacity-50 hover:opacity-100"
+                onClick={handleUncheck}
               >
-                <Edit2 className="w-3 h-3" />
+                <X className="w-3 h-3" />
               </Button>
             )}
-          </>
+          </div>
         )}
-      </div>
 
-      {/* Session time indicator for current task */}
-      {isCurrentTask && sessionTimeSeconds > 0 && (
-        <span className="text-xs text-primary font-mono">
-          +{formatTime(sessionTimeSeconds)}
-        </span>
-      )}
+        {isAbandoned && (
+          <div className="flex items-center gap-1">
+            <Ban className="w-4 h-4 text-destructive" />
+            {item.completed_session && (
+              <span className="text-[10px] text-muted-foreground">S{item.completed_session}</span>
+            )}
+            {onUncheck && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-5 w-5 ml-1 opacity-50 hover:opacity-100"
+                onClick={handleUncheck}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            )}
+          </div>
+        )}
       
-      {isCompleted && (
-        <div className="flex items-center gap-1">
-          <CheckCircle className="w-4 h-4 text-accent" />
-          {item.completed_session && (
-            <span className="text-[10px] text-muted-foreground">S{item.completed_session}</span>
-          )}
-          {onUncheck && (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-5 w-5 ml-1 opacity-50 hover:opacity-100"
-              onClick={handleUncheck}
-            >
-              <X className="w-3 h-3" />
-            </Button>
-          )}
-        </div>
-      )}
-
-      {isAbandoned && (
-        <div className="flex items-center gap-1">
-          <Ban className="w-4 h-4 text-destructive" />
-          {item.completed_session && (
-            <span className="text-[10px] text-muted-foreground">S{item.completed_session}</span>
-          )}
-          {onUncheck && (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-5 w-5 ml-1 opacity-50 hover:opacity-100"
-              onClick={handleUncheck}
-            >
-              <X className="w-3 h-3" />
-            </Button>
-          )}
-        </div>
-      )}
-      
-      {isCurrentTask && !isCompleted && !isAbandoned && (
-        <span className="text-xs text-primary font-cinzel tracking-wide">
-          ACTIVE
-        </span>
-      )}
+        {isCurrentTask && !isCompleted && !isAbandoned && (
+          <span className="text-xs text-primary font-cinzel tracking-wide">
+            ACTIVE
+          </span>
+        )}
       </div>
     </div>
   );
