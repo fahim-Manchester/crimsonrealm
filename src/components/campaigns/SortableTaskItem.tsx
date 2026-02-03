@@ -114,41 +114,41 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
     }
   };
 
+  const indentStyle = indentLevel > 0 ? { marginLeft: indentLevel * 24 } : undefined;
+
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "relative flex items-center gap-3 p-3 rounded-sm border transition-all",
-        isDragging && "opacity-50 z-50",
-        (isCompleted || isAbandoned) && "opacity-60",
-        isCompleted && "bg-accent/10",
-        isAbandoned && "bg-destructive/10",
-        isTerritory && !isCompleted && !isAbandoned && "bg-accent/5 border-accent/40",
-        isCurrentTask 
-          ? "border-primary bg-primary/20 ring-2 ring-primary/30 cursor-default" 
-          : (isCompleted || isAbandoned)
-            ? "border-border/30 cursor-default"
-            : "border-border/50 hover:border-border bg-card/50 cursor-pointer"
-      )}
-      onClick={handleClick}
-    >
-      {/* Nest drop zone (visible when dragging over) */}
-      {nestDropId && (
-        <div
-          ref={setNestRef}
-          className={cn(
-            "absolute inset-0 rounded-sm pointer-events-none",
-            isNestOver && "ring-2 ring-accent/40"
-          )}
-          aria-hidden="true"
-        />
-      )}
+    <div style={indentStyle}>
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={cn(
+          "relative flex items-center gap-3 p-3 rounded-sm border transition-all",
+          isDragging && "opacity-50 z-50",
+          (isCompleted || isAbandoned) && "opacity-60",
+          isCompleted && "bg-accent/10",
+          isAbandoned && "bg-destructive/10",
+          isTerritory && !isCompleted && !isAbandoned && "bg-accent/5 border-accent/40",
+          isCurrentTask 
+            ? "border-primary bg-primary/20 ring-2 ring-primary/30 cursor-default" 
+            : (isCompleted || isAbandoned)
+              ? "border-border/30 cursor-default"
+              : "border-border/50 hover:border-border bg-card/50 cursor-pointer"
+        )}
+        onClick={handleClick}
+      >
+        {/* Nest drop zone (visible when dragging over) */}
+        {nestDropId && (
+          <div
+            ref={setNestRef}
+            className={cn(
+              "absolute inset-0 rounded-sm pointer-events-none",
+              isNestOver && "ring-2 ring-accent/40"
+            )}
+            aria-hidden="true"
+          />
+        )}
 
-      {/* Indentation */}
-      {indentLevel > 0 && <div className="w-0" style={{ marginLeft: indentLevel * 18 }} />}
-
-      <button
+        <button
         {...attributes}
         {...listeners}
         className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted/50 rounded"
@@ -261,6 +261,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
           ACTIVE
         </span>
       )}
+      </div>
     </div>
   );
 });
