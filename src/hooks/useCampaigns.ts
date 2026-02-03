@@ -238,6 +238,60 @@ export function useCampaigns() {
     }
   }, [fetchCampaigns]);
 
+  const updateCampaign = useCallback(async (
+    campaignId: string, 
+    updates: { name?: string; planned_time?: number; difficulty?: string }
+  ) => {
+    const { error } = await supabase
+      .from("campaigns")
+      .update(updates)
+      .eq("id", campaignId);
+
+    if (error) {
+      toast.error("Failed to update campaign");
+      console.error(error);
+    } else {
+      toast.success("Campaign updated");
+      await fetchCampaigns();
+    }
+  }, [fetchCampaigns]);
+
+  const resetRoutineCampaign = useCallback(async (campaignId: string) => {
+    // Reset all campaign_items for this campaign: uncheck them, clear time_spent
+    const { error: itemsError } = await supabase
+      .from("campaign_items")
+      .update({ 
+        completed: false, 
+        status: 'pending',
+        time_spent: 0,
+        completed_session: null
+      })
+      .eq("campaign_id", campaignId);
+
+    if (itemsError) {
+      toast.error("Failed to reset campaign items");
+      console.error(itemsError);
+      return;
+    }
+
+    // Reset campaign time and session count but keep status as routine
+    const { error } = await supabase
+      .from("campaigns")
+      .update({ 
+        time_spent: 0,
+        session_count: 0
+      })
+      .eq("id", campaignId);
+
+    if (error) {
+      toast.error("Failed to reset campaign");
+      console.error(error);
+    } else {
+      toast.success("Routine campaign reset!");
+      await fetchCampaigns();
+    }
+  }, [fetchCampaigns]);
+
   const deleteCampaign = useCallback(async (campaignId: string) => {
     const { error } = await supabase
       .from("campaigns")
@@ -288,6 +342,8 @@ export function useCampaigns() {
     createCampaign,
     updateCampaignTimeSpent,
     updateCampaignStatus,
+    updateCampaign,
+    resetRoutineCampaign,
     deleteCampaign,
     fetchCampaignItems,
     toggleItemCompleted,

@@ -1,11 +1,13 @@
 import { useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Plus, Swords } from "lucide-react";
+import { ArrowLeft, Plus, Swords, Flame, Archive, RotateCcw, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useCampaigns } from "@/hooks/useCampaigns";
+import { useCampaigns, Campaign } from "@/hooks/useCampaigns";
 import { CampaignCreator } from "@/components/campaigns/CampaignCreator";
 import { CampaignCard } from "@/components/campaigns/CampaignCard";
+import { CampaignSectionHeader } from "@/components/campaigns/CampaignSectionHeader";
+import { EditCampaignDialog } from "@/components/campaigns/EditCampaignDialog";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { useAuth } from "@/hooks/useAuth";
 import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
@@ -20,6 +22,8 @@ const Campaigns = () => {
     createCampaign,
     updateCampaignTimeSpent,
     updateCampaignStatus,
+    updateCampaign,
+    resetRoutineCampaign,
     deleteCampaign,
     fetchCampaignItems,
     refreshCampaigns
@@ -27,6 +31,19 @@ const Campaigns = () => {
 
   const [showCreator, setShowCreator] = useState(false);
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
+  const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
+  
+  // Section expansion states
+  const [expandedSections, setExpandedSections] = useState({
+    active: true,
+    archived: false,
+    routine: true,
+    completed: false
+  });
+
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
 
   // Refresh data (used by CampaignCreator when quick-adding)
   const handleRefreshData = useCallback(() => {
@@ -52,10 +69,33 @@ const Campaigns = () => {
   };
 
   const handleCompleteCampaign = async (campaignId: string) => {
-    await updateCampaignStatus(campaignId, "completed");
+    const campaign = campaigns.find(c => c.id === campaignId);
+    // For routine campaigns, mark as completed but keep in routine section
+    if (campaign?.status === "routine") {
+      // Just mark items complete but don't change campaign status
+      await updateCampaignStatus(campaignId, "routine");
+    } else {
+      await updateCampaignStatus(campaignId, "completed");
+    }
     if (activeCampaignId === campaignId) {
       setActiveCampaignId(null);
     }
+  };
+
+  const handleEditCampaign = (campaign: Campaign) => {
+    setEditingCampaign(campaign);
+  };
+
+  const handleSaveEdit = async (campaignId: string, updates: { name?: string; planned_time?: number; difficulty?: string }) => {
+    await updateCampaign(campaignId, updates);
+  };
+
+  const handleMoveToStatus = async (campaignId: string, newStatus: string) => {
+    await updateCampaignStatus(campaignId, newStatus);
+  };
+
+  const handleResetRoutine = async (campaignId: string) => {
+    await resetRoutineCampaign(campaignId);
   };
 
   // Handle time update from card timer (converts seconds to minutes)
@@ -68,8 +108,30 @@ const Campaigns = () => {
 
   if (authLoading || loading) return <LoadingSpinner />;
 
+  // Group campaigns by status
   const activeCampaigns = campaigns.filter(c => c.status === "active");
+  const archivedCampaigns = campaigns.filter(c => c.status === "archived");
+  const routineCampaigns = campaigns.filter(c => c.status === "routine");
   const completedCampaigns = campaigns.filter(c => c.status === "completed");
+
+  const renderCampaignGrid = (campaignList: Campaign[], showReset: boolean = false) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-3">
+      {campaignList.map(campaign => (
+        <CampaignCard
+          key={campaign.id}
+          campaign={campaign}
+          onStart={handleStartCampaign}
+          onDelete={deleteCampaign}
+          onComplete={handleCompleteCampaign}
+          onEdit={handleEditCampaign}
+          onReset={showReset ? handleResetRoutine : undefined}
+          fetchItems={fetchCampaignItems}
+          isActive={activeCampaignId === campaign.id}
+          onTimeUpdate={handleTimeUpdate}
+        />
+      ))}
+    </div>
+  );
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -125,55 +187,83 @@ const Campaigns = () => {
             </Button>
           </div>
 
-          {/* Active Campaigns */}
-          {activeCampaigns.length > 0 && (
-            <section className="mb-10">
-              <h3 className="font-cinzel text-lg tracking-wide mb-4 text-foreground">
-                Active Campaigns ({activeCampaigns.length})
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {activeCampaigns.map(campaign => (
-                  <CampaignCard
-                    key={campaign.id}
-                    campaign={campaign}
-                    onStart={handleStartCampaign}
-                    onDelete={deleteCampaign}
-                    onComplete={handleCompleteCampaign}
-                    fetchItems={fetchCampaignItems}
-                    isActive={activeCampaignId === campaign.id}
-                    onTimeUpdate={handleTimeUpdate}
-                  />
-                ))}
-              </div>
+          {/* Campaign Sections */}
+          <div className="space-y-4">
+            {/* Active Campaigns */}
+            <section>
+              <CampaignSectionHeader
+                title="Active Campaigns"
+                count={activeCampaigns.length}
+                isExpanded={expandedSections.active}
+                onToggle={() => toggleSection("active")}
+                icon={<Flame className="w-4 h-4" />}
+              />
+              {expandedSections.active && activeCampaigns.length > 0 && renderCampaignGrid(activeCampaigns)}
+              {expandedSections.active && activeCampaigns.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4 font-crimson">
+                  No active campaigns. Create one to begin your quest!
+                </p>
+              )}
             </section>
-          )}
 
-          {/* Completed Campaigns */}
-          {completedCampaigns.length > 0 && (
-            <section className="mb-10">
-              <h3 className="font-cinzel text-lg tracking-wide mb-4 text-muted-foreground">
-                Completed Campaigns ({completedCampaigns.length})
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {completedCampaigns.map(campaign => (
-                  <CampaignCard
-                    key={campaign.id}
-                    campaign={campaign}
-                    onStart={handleStartCampaign}
-                    onDelete={deleteCampaign}
-                    onComplete={handleCompleteCampaign}
-                    fetchItems={fetchCampaignItems}
-                    isActive={false}
-                    onTimeUpdate={handleTimeUpdate}
-                  />
-                ))}
-              </div>
+            {/* Routine Campaigns */}
+            <section>
+              <CampaignSectionHeader
+                title="Routine"
+                count={routineCampaigns.length}
+                isExpanded={expandedSections.routine}
+                onToggle={() => toggleSection("routine")}
+                icon={<RotateCcw className="w-4 h-4" />}
+                className="border-accent/30"
+              />
+              {expandedSections.routine && routineCampaigns.length > 0 && renderCampaignGrid(routineCampaigns, true)}
+              {expandedSections.routine && routineCampaigns.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4 font-crimson">
+                  Drag campaigns here for repeatable routines like morning rituals.
+                </p>
+              )}
             </section>
-          )}
 
-          {/* Empty State */}
+            {/* Archived Campaigns */}
+            <section>
+              <CampaignSectionHeader
+                title="Archived"
+                count={archivedCampaigns.length}
+                isExpanded={expandedSections.archived}
+                onToggle={() => toggleSection("archived")}
+                icon={<Archive className="w-4 h-4" />}
+                className="border-muted-foreground/30"
+              />
+              {expandedSections.archived && archivedCampaigns.length > 0 && renderCampaignGrid(archivedCampaigns)}
+              {expandedSections.archived && archivedCampaigns.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4 font-crimson">
+                  No archived campaigns.
+                </p>
+              )}
+            </section>
+
+            {/* Completed Campaigns */}
+            <section>
+              <CampaignSectionHeader
+                title="Completed"
+                count={completedCampaigns.length}
+                isExpanded={expandedSections.completed}
+                onToggle={() => toggleSection("completed")}
+                icon={<Trophy className="w-4 h-4" />}
+                className="border-accent/30"
+              />
+              {expandedSections.completed && completedCampaigns.length > 0 && renderCampaignGrid(completedCampaigns)}
+              {expandedSections.completed && completedCampaigns.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4 font-crimson">
+                  No completed campaigns yet. Finish your quests to see them here!
+                </p>
+              )}
+            </section>
+          </div>
+
+          {/* Empty State - only show if no campaigns at all */}
           {campaigns.length === 0 && (
-            <div className="gothic-card p-12 text-center">
+            <div className="gothic-card p-12 text-center mt-8">
               <Swords className="w-12 h-12 text-primary/50 mx-auto mb-4" />
               <h3 className="font-cinzel text-lg mb-2">No Campaigns Yet</h3>
               <p className="font-crimson text-muted-foreground mb-6">
@@ -209,6 +299,14 @@ const Campaigns = () => {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Edit Dialog */}
+      <EditCampaignDialog
+        campaign={editingCampaign}
+        open={!!editingCampaign}
+        onOpenChange={(open) => !open && setEditingCampaign(null)}
+        onSave={handleSaveEdit}
+      />
     </div>
   );
 };

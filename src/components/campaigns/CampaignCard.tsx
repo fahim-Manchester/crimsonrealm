@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Trash2, Play, Pause, CheckCircle, Compass } from "lucide-react";
+import { Trash2, Play, Pause, CheckCircle, Compass, Pencil, RefreshCw } from "lucide-react";
 import type { Campaign, CampaignItem } from "@/hooks/useCampaigns";
 
 interface CampaignCardProps {
@@ -10,6 +10,8 @@ interface CampaignCardProps {
   onStart: (campaignId: string) => void;
   onDelete: (campaignId: string) => void;
   onComplete: (campaignId: string) => void;
+  onEdit: (campaign: Campaign) => void;
+  onReset?: (campaignId: string) => void;
   fetchItems: (campaignId: string) => Promise<CampaignItem[]>;
   isActive: boolean;
   onTimeUpdate?: (campaignId: string, additionalSeconds: number) => void;
@@ -28,6 +30,8 @@ export function CampaignCard({
   onStart, 
   onDelete, 
   onComplete,
+  onEdit,
+  onReset,
   fetchItems,
   isActive,
   onTimeUpdate 
@@ -91,6 +95,7 @@ export function CampaignCard({
 
   const difficulty = difficultyConfig[campaign.difficulty] || difficultyConfig.medium;
   const isCompleted = campaign.status === "completed";
+  const isRoutine = campaign.status === "routine";
 
   const handleOpenSession = () => {
     navigate(`/campaigns/${campaign.id}`);
@@ -131,6 +136,15 @@ export function CampaignCard({
               <Button
                 variant="ghost"
                 size="sm"
+                onClick={() => onEdit(campaign)}
+                className="h-8 w-8 p-0 hover:bg-muted/30"
+                title="Edit Campaign"
+              >
+                <Pencil className="w-4 h-4 text-muted-foreground" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={handleOpenSession}
                 className="h-8 w-8 p-0 hover:bg-accent/20"
                 title="Open Campaign Session"
@@ -150,6 +164,17 @@ export function CampaignCard({
                   <Play className="w-4 h-4 text-primary" />
                 )}
               </Button>
+              {isRoutine && onReset && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onReset(campaign.id)}
+                  className="h-8 w-8 p-0 hover:bg-accent/20"
+                  title="Reset Routine Campaign"
+                >
+                  <RefreshCw className="w-4 h-4 text-accent" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
