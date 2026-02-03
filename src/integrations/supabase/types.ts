@@ -136,6 +136,111 @@ export type Database = {
         }
         Relationships: []
       }
+      diary_books: {
+        Row: {
+          cover_color: string
+          created_at: string
+          id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cover_color?: string
+          created_at?: string
+          id?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cover_color?: string
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      diary_entries: {
+        Row: {
+          book_id: string
+          campaign_id: string | null
+          content: string | null
+          created_at: string
+          entry_type: string
+          id: string
+          note: string | null
+          page_number: number
+          project_id: string | null
+          resource_id: string | null
+          task_id: string | null
+        }
+        Insert: {
+          book_id: string
+          campaign_id?: string | null
+          content?: string | null
+          created_at?: string
+          entry_type?: string
+          id?: string
+          note?: string | null
+          page_number?: number
+          project_id?: string | null
+          resource_id?: string | null
+          task_id?: string | null
+        }
+        Update: {
+          book_id?: string
+          campaign_id?: string | null
+          content?: string | null
+          created_at?: string
+          entry_type?: string
+          id?: string
+          note?: string | null
+          page_number?: number
+          project_id?: string | null
+          resource_id?: string | null
+          task_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diary_entries_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "diary_books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diary_entries_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diary_entries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diary_entries_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diary_entries_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       entry_groups: {
         Row: {
           created_at: string

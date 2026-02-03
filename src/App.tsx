@@ -12,6 +12,8 @@ import Tasks from "./pages/Tasks";
 import Achievements from "./pages/Achievements";
 import Campaigns from "./pages/Campaigns";
 import CampaignSession from "./pages/CampaignSession";
+import Diary from "./pages/Diary";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +34,8 @@ const App = () => (
           <Route path="/achievements" element={<Achievements />} />
           <Route path="/campaigns" element={<Campaigns />} />
           <Route path="/campaigns/:id" element={<CampaignSession />} />
+          <Route path="/diary" element={<Diary />} />
+          <Route path="/settings" element={<Settings />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
