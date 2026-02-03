@@ -88,7 +88,44 @@ export function useCampaigns() {
       toast.error("Failed to fetch campaigns");
       console.error(error);
     } else {
-      setCampaigns(data || []);
+      const baseCampaigns = (data || []) as Campaign[];
+
+      // Derive accurate campaign time from campaign_items (seconds) so dashboard always matches session totals.
+      // This avoids relying on campaigns.time_spent which can lag behind if a session wasn't explicitly ended.
+      const ids = baseCampaigns.map((c) => c.id);
+      if (ids.length === 0) {
+        setCampaigns(baseCampaigns);
+        return;
+      }
+
+      const { data: itemTimes, error: itemErr } = await supabase
+        .from("campaign_items")
+        .select("campaign_id, time_spent")
+        .in("campaign_id", ids);
+
+      if (itemErr) {
+        // Fallback to stored campaign time if this aggregation fails
+        console.error(itemErr);
+        setCampaigns(baseCampaigns);
+        return;
+      }
+
+      const secondsByCampaign = new Map<string, number>();
+      for (const row of itemTimes || []) {
+        const campaignId = row.campaign_id as string;
+        const seconds = (row.time_spent as number | null) || 0;
+        secondsByCampaign.set(campaignId, (secondsByCampaign.get(campaignId) || 0) + seconds);
+      }
+
+      const merged = baseCampaigns.map((c) => {
+        const seconds = secondsByCampaign.get(c.id) || 0;
+        const derivedMinutes = Math.ceil(seconds / 60);
+        // Use derived time when it's greater (or when stored is 0), but never reduce time_spent on the UI.
+        const time_spent = Math.max(c.time_spent || 0, derivedMinutes);
+        return { ...c, time_spent };
+      });
+
+      setCampaigns(merged);
     }
   }, [user]);
 
