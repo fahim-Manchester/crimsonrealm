@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Plus, Swords } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ const Campaigns = () => {
     availableProjects,
     loading,
     createCampaign,
+    updateCampaignTimeSpent,
     updateCampaignStatus,
     deleteCampaign,
     fetchCampaignItems
@@ -50,6 +51,14 @@ const Campaigns = () => {
       setActiveCampaignId(null);
     }
   };
+
+  // Handle time update from card timer (converts seconds to minutes)
+  const handleTimeUpdate = useCallback(async (campaignId: string, additionalSeconds: number) => {
+    const additionalMinutes = Math.ceil(additionalSeconds / 60);
+    if (additionalMinutes > 0) {
+      await updateCampaignTimeSpent(campaignId, additionalMinutes);
+    }
+  }, [updateCampaignTimeSpent]);
 
   if (authLoading || loading) return <LoadingSpinner />;
 
@@ -126,6 +135,7 @@ const Campaigns = () => {
                     onComplete={handleCompleteCampaign}
                     fetchItems={fetchCampaignItems}
                     isActive={activeCampaignId === campaign.id}
+                    onTimeUpdate={handleTimeUpdate}
                   />
                 ))}
               </div>
@@ -148,6 +158,7 @@ const Campaigns = () => {
                     onComplete={handleCompleteCampaign}
                     fetchItems={fetchCampaignItems}
                     isActive={false}
+                    onTimeUpdate={handleTimeUpdate}
                   />
                 ))}
               </div>

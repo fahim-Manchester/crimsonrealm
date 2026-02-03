@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Trash2, Play, Pause, CheckCircle } from "lucide-react";
+import { Trash2, Play, Pause, CheckCircle, Compass } from "lucide-react";
 import type { Campaign, CampaignItem } from "@/hooks/useCampaigns";
 
 interface CampaignCardProps {
@@ -11,6 +12,7 @@ interface CampaignCardProps {
   onComplete: (campaignId: string) => void;
   fetchItems: (campaignId: string) => Promise<CampaignItem[]>;
   isActive: boolean;
+  onTimeUpdate?: (campaignId: string, additionalSeconds: number) => void;
 }
 
 const difficultyConfig: Record<string, { emoji: string; color: string }> = {
@@ -27,10 +29,14 @@ export function CampaignCard({
   onDelete, 
   onComplete,
   fetchItems,
-  isActive 
+  isActive,
+  onTimeUpdate 
 }: CampaignCardProps) {
+  const navigate = useNavigate();
   const [items, setItems] = useState<CampaignItem[]>([]);
   const [expanded, setExpanded] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (expanded && items.length === 0) {
@@ -38,8 +44,35 @@ export function CampaignCard({
     }
   }, [expanded, campaign.id, fetchItems, items.length]);
 
+  // Timer effect for when campaign is active
+  useEffect(() => {
+    if (isActive) {
+      intervalRef.current = setInterval(() => {
+        setElapsedSeconds(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      // Report elapsed time when stopping
+      if (elapsedSeconds > 0 && onTimeUpdate) {
+        onTimeUpdate(campaign.id, elapsedSeconds);
+        setElapsedSeconds(0);
+      }
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [isActive, campaign.id, elapsedSeconds, onTimeUpdate]);
+
+  // Calculate progress including live elapsed time
+  const totalTimeMinutes = campaign.time_spent + Math.floor(elapsedSeconds / 60);
   const progressPercent = campaign.planned_time > 0
-    ? Math.min((campaign.time_spent / campaign.planned_time) * 100, 100)
+    ? Math.min((totalTimeMinutes / campaign.planned_time) * 100, 100)
     : 0;
 
   const formatTime = (minutes: number) => {
@@ -50,8 +83,18 @@ export function CampaignCard({
     return `${hours}h ${mins}m`;
   };
 
+  const formatElapsed = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const difficulty = difficultyConfig[campaign.difficulty] || difficultyConfig.medium;
   const isCompleted = campaign.status === "completed";
+
+  const handleOpenSession = () => {
+    navigate(`/campaigns/${campaign.id}`);
+  };
 
   return (
     <div className={`gothic-card p-4 transition-all duration-300 ${
@@ -73,13 +116,27 @@ export function CampaignCard({
             )}
           </div>
           <p className="text-xs text-muted-foreground font-crimson">
-            {formatTime(campaign.time_spent)} / {formatTime(campaign.planned_time)} planned
+            {formatTime(totalTimeMinutes)} / {formatTime(campaign.planned_time)} planned
+            {isActive && elapsedSeconds > 0 && (
+              <span className="ml-2 text-primary">
+                (+{formatElapsed(elapsedSeconds)})
+              </span>
+            )}
           </p>
         </div>
 
         <div className="flex items-center gap-1">
           {!isCompleted && (
             <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleOpenSession}
+                className="h-8 w-8 p-0 hover:bg-accent/20"
+                title="Open Campaign Session"
+              >
+                <Compass className="w-4 h-4 text-accent" />
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
