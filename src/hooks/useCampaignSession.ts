@@ -32,6 +32,46 @@ export function useCampaignSession(campaign: Campaign | null) {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const sessionStartTimeRef = useRef<number>(0);
 
+  const findParentProjectId = useCallback((item: CampaignItem) => {
+    // If this item is nested under a territory (project item), attribute time to that territory.
+    const guard = new Set<string>();
+    let cursor: CampaignItem | undefined = item;
+    while (cursor?.parent_item_id) {
+      if (guard.has(cursor.id)) break;
+      guard.add(cursor.id);
+
+      const parent = items.find((i) => i.id === cursor!.parent_item_id);
+      if (!parent) break;
+      if (parent.project_id) return parent.project_id;
+      cursor = parent;
+    }
+    return null;
+  }, [items]);
+
+  const incrementTaskMinutes = useCallback(async (taskId: string, minutes: number) => {
+    if (minutes === 0) return;
+    const { data, error } = await supabase
+      .from("tasks")
+      .select("time_logged")
+      .eq("id", taskId)
+      .maybeSingle();
+    if (error || !data) return;
+    const current = data.time_logged || 0;
+    await supabase.from("tasks").update({ time_logged: current + minutes }).eq("id", taskId);
+  }, []);
+
+  const incrementProjectMinutes = useCallback(async (projectId: string, minutes: number) => {
+    if (minutes === 0) return;
+    const { data, error } = await supabase
+      .from("projects")
+      .select("time_spent")
+      .eq("id", projectId)
+      .maybeSingle();
+    if (error || !data) return;
+    const current = data.time_spent || 0;
+    await supabase.from("projects").update({ time_spent: current + minutes }).eq("id", projectId);
+  }, []);
+
   // Fetch campaign items
   const fetchItems = useCallback(async () => {
     if (!campaign) return;
@@ -117,23 +157,15 @@ export function useCampaignSession(campaign: Campaign | null) {
       .eq("id", item.id);
 
     // If it's a task, add time to the task's time_logged
-    if (item.task_id && item.task) {
-      const currentTaskTime = item.task.time_logged || 0;
-      await supabase
-        .from("tasks")
-        .update({ time_logged: currentTaskTime + timeSpentMinutes })
-        .eq("id", item.task_id);
-    }
+    if (item.task_id) await incrementTaskMinutes(item.task_id, timeSpentMinutes);
 
     // If it's a project, add time to the project's time_spent
-    if (item.project_id && item.project) {
-      const currentProjectTime = item.project.time_spent || 0;
-      await supabase
-        .from("projects")
-        .update({ time_spent: currentProjectTime + timeSpentMinutes })
-        .eq("id", item.project_id);
-    }
-  }, []);
+    if (item.project_id) await incrementProjectMinutes(item.project_id, timeSpentMinutes);
+
+    // If it's nested under a territory, also attribute time to that territory (main db)
+    const parentProjectId = findParentProjectId(item);
+    if (parentProjectId) await incrementProjectMinutes(parentProjectId, timeSpentMinutes);
+  }, [findParentProjectId, incrementProjectMinutes, incrementTaskMinutes]);
 
   // Switch to a different task (seamless switch, saves current task time)
   const switchToTask = useCallback(async (newIndex: number) => {
@@ -299,26 +331,60 @@ export function useCampaignSession(campaign: Campaign | null) {
       .eq("id", itemId);
 
     // Update source task/project with the difference
-    if (item.task_id && item.task) {
-      const currentTaskTime = item.task.time_logged || 0;
-      await supabase
-        .from("tasks")
-        .update({ time_logged: currentTaskTime + timeDiffMinutes })
-        .eq("id", item.task_id);
-    }
+    if (item.task_id) await incrementTaskMinutes(item.task_id, timeDiffMinutes);
 
-    if (item.project_id && item.project) {
-      const currentProjectTime = item.project.time_spent || 0;
-      await supabase
-        .from("projects")
-        .update({ time_spent: currentProjectTime + timeDiffMinutes })
-        .eq("id", item.project_id);
-    }
+    if (item.project_id) await incrementProjectMinutes(item.project_id, timeDiffMinutes);
+
+    const parentProjectId = findParentProjectId(item);
+    if (parentProjectId) await incrementProjectMinutes(parentProjectId, timeDiffMinutes);
 
     // Update local state
     setItems(prev => prev.map(i => 
       i.id === itemId ? { ...i, time_spent: newTimeSeconds } : i
     ));
+  }, [items]);
+
+  const setItemParent = useCallback(async (itemId: string, parentItemId: string | null) => {
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return;
+
+    // Prevent self-parenting and simple cycles
+    if (parentItemId === itemId) return;
+
+    await supabase
+      .from("campaign_items")
+      .update({ parent_item_id: parentItemId })
+      .eq("id", itemId);
+
+    // Reorder locally so children appear directly after parent (and after existing children)
+    setItems((prev) => {
+      const next = [...prev];
+      const fromIdx = next.findIndex((i) => i.id === itemId);
+      if (fromIdx < 0) return prev;
+      const [moved] = next.splice(fromIdx, 1);
+      moved.parent_item_id = parentItemId;
+
+      if (!parentItemId) {
+        next.push(moved);
+      } else {
+        const parentIdx = next.findIndex((i) => i.id === parentItemId);
+        if (parentIdx < 0) {
+          next.push(moved);
+        } else {
+          // place after the parent and its current contiguous children
+          let insertAt = parentIdx + 1;
+          while (insertAt < next.length && next[insertAt].parent_item_id === parentItemId) insertAt++;
+          next.splice(insertAt, 0, moved);
+        }
+      }
+
+      // Persist display_order
+      const updates = next.map((it, idx) =>
+        supabase.from("campaign_items").update({ display_order: idx }).eq("id", it.id)
+      );
+      Promise.all(updates);
+      return next;
+    });
   }, [items]);
 
   // End session and save time to database
@@ -558,6 +624,7 @@ export function useCampaignSession(campaign: Campaign | null) {
     setCurrentTaskIndex,
     uncheckItem,
     updateItemTimeManually,
+    setItemParent,
     refreshItems: fetchItems
   };
 }
