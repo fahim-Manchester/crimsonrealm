@@ -159,11 +159,20 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
         body: {
           action: "generate_name",
           tasks: [...selectedTaskNames, ...tempItemNames.filter((_, i) => temporaryItems[i].type === "popup_quest")],
-          projects: [...selectedProjectNames, ...tempItemNames.filter((_, i) => temporaryItems[i].type === "hidden_territory")]
+          projects: [...selectedProjectNames, ...tempItemNames.filter((_, i) => temporaryItems[i].type === "hidden_territory")],
+          userId: user?.id
         }
       });
 
       if (error) throw error;
+      if (data?.code === "DAILY_LIMIT_EXCEEDED") {
+        toast.error(data.error || "Daily AI limit reached. Resets at midnight UTC.");
+        return;
+      }
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
       if (data?.name) {
         setCampaignName(data.name);
       }
@@ -191,11 +200,20 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
           action: "guess_difficulty",
           tasks: selectedTaskData,
           projects: selectedProjectData,
-          temporaryItems: temporaryItems
+          temporaryItems: temporaryItems,
+          userId: user?.id
         }
       });
 
       if (error) throw error;
+      if (data?.code === "DAILY_LIMIT_EXCEEDED") {
+        toast.error(data.error || "Daily AI limit reached. Resets at midnight UTC.");
+        return;
+      }
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
       if (data?.difficulty) {
         setDifficulty(data.difficulty);
         if (data.planned_hours) {

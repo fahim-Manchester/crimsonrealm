@@ -1,9 +1,57 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+const DAILY_AI_LIMIT = 10;
+
+async function checkUsageLimit(
+  supabaseAdmin: any,
+  userId: string
+): Promise<{ allowed: boolean; count: number }> {
+  // Get today's start (UTC midnight)
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+
+  // Count requests for this user today
+  const { count, error } = await supabaseAdmin
+    .from("ai_usage")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("created_at", todayStart.toISOString());
+
+  if (error) {
+    console.error("Usage check error:", error);
+    // Allow on error to not block users due to tracking issues
+    return { allowed: true, count: 0 };
+  }
+
+  const currentCount = count || 0;
+  
+  if (currentCount >= DAILY_AI_LIMIT) {
+    return { allowed: false, count: currentCount };
+  }
+
+  return { allowed: true, count: currentCount };
+}
+
+async function logUsage(
+  supabaseAdmin: any,
+  userId: string,
+  action: string
+): Promise<void> {
+  const { error } = await supabaseAdmin.from("ai_usage").insert({
+    user_id: userId,
+    action_type: action,
+  });
+
+  if (error) {
+    console.error("Failed to log usage:", error);
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -11,11 +59,38 @@ serve(async (req) => {
   }
 
   try {
-    const { action, tasks, projects } = await req.json();
+    const { action, tasks, projects, userId } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
+    }
+
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error("Supabase configuration missing");
+    }
+
+    // Create admin client for usage tracking
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Check usage limit if userId is provided
+    if (userId) {
+      const { allowed, count } = await checkUsageLimit(supabaseAdmin, userId);
+      
+      if (!allowed) {
+        console.log(`User ${userId} exceeded daily limit: ${count}/${DAILY_AI_LIMIT}`);
+        return new Response(
+          JSON.stringify({
+            error: `Daily AI limit reached (${DAILY_AI_LIMIT}/day). Resets at midnight UTC.`,
+            code: "DAILY_LIMIT_EXCEEDED",
+            count,
+            limit: DAILY_AI_LIMIT,
+          }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     let systemPrompt = "";
@@ -101,6 +176,11 @@ Respond with JSON: { "difficulty": "trivial|easy|medium|hard|legendary", "planne
     const content = data.choices?.[0]?.message?.content?.trim();
 
     console.log(`AI response: ${content}`);
+
+    // Log usage after successful AI call
+    if (userId) {
+      await logUsage(supabaseAdmin, userId, action);
+    }
 
     if (action === "generate_name") {
       return new Response(
