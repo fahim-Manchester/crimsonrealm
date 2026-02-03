@@ -76,6 +76,7 @@ interface QuestItemListProps {
   onSetParent: (itemId: string, parentItemId: string | null) => void;
   onUncheckItem: (itemId: string) => void;
   onUpdateTime: (itemId: string, minutes: number) => void;
+  onMarkPermanent?: (itemId: string) => void;
 }
 
 export function QuestItemList({
@@ -87,6 +88,7 @@ export function QuestItemList({
   onSetParent,
   onUncheckItem,
   onUpdateTime,
+  onMarkPermanent,
 }: QuestItemListProps) {
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   
@@ -184,6 +186,7 @@ export function QuestItemList({
                   onUncheck={() => onUncheckItem(item.id)}
                   onUnembed={indentLevel > 0 ? () => onSetParent(item.id, null) : undefined}
                   onUpdateTime={(mins) => onUpdateTime(item.id, mins)}
+                  onMarkPermanent={item.is_temporary && onMarkPermanent ? () => onMarkPermanent(item.id) : undefined}
                   sessionTimeSeconds={index === currentIndex ? (itemSessionTimes[item.id] || 0) : 0}
                   nestDropId={nestId(item.id)}
                   isDragActive={isDragActive}
@@ -193,13 +196,19 @@ export function QuestItemList({
           </div>
         </SortableContext>
         <DragOverlay>
-          {activeDragId ? (
-            <div className="p-3 rounded-sm border border-primary bg-card/90 shadow-lg opacity-90">
-              <span className="font-crimson text-sm">
-                {byId.get(activeDragId)?.task?.title || byId.get(activeDragId)?.project?.name || "Item"}
-              </span>
-            </div>
-          ) : null}
+          {activeDragId ? (() => {
+            const dragItem = byId.get(activeDragId);
+            const dragTitle = dragItem?.is_temporary 
+              ? dragItem.temporary_name 
+              : (dragItem?.task?.title || dragItem?.project?.name);
+            return (
+              <div className="p-3 rounded-sm border border-primary bg-card/90 shadow-lg opacity-90">
+                <span className="font-crimson text-sm">
+                  {dragTitle || "Item"}
+                </span>
+              </div>
+            );
+          })() : null}
         </DragOverlay>
       </DndContext>
     </div>

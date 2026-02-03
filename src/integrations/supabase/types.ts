@@ -22,10 +22,14 @@ export type Database = {
           created_at: string
           display_order: number | null
           id: string
+          is_temporary: boolean
           parent_item_id: string | null
           project_id: string | null
           status: string | null
           task_id: string | null
+          temporary_description: string | null
+          temporary_name: string | null
+          temporary_type: string | null
           time_spent: number | null
         }
         Insert: {
@@ -35,10 +39,14 @@ export type Database = {
           created_at?: string
           display_order?: number | null
           id?: string
+          is_temporary?: boolean
           parent_item_id?: string | null
           project_id?: string | null
           status?: string | null
           task_id?: string | null
+          temporary_description?: string | null
+          temporary_name?: string | null
+          temporary_type?: string | null
           time_spent?: number | null
         }
         Update: {
@@ -48,10 +56,14 @@ export type Database = {
           created_at?: string
           display_order?: number | null
           id?: string
+          is_temporary?: boolean
           parent_item_id?: string | null
           project_id?: string | null
           status?: string | null
           task_id?: string | null
+          temporary_description?: string | null
+          temporary_name?: string | null
+          temporary_type?: string | null
           time_spent?: number | null
         }
         Relationships: [

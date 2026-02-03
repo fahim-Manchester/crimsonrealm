@@ -577,6 +577,172 @@ export function useCampaignSession(campaign: Campaign | null) {
     return newItem;
   }, [campaign, items.length]);
 
+  // Add a temporary item (pop-up quest or hidden territory) - NOT saved to main tables
+  const addTemporaryItem = useCallback(async (
+    type: 'task' | 'project',
+    name: string,
+    description: string | null
+  ) => {
+    if (!campaign) return;
+
+    const { data, error } = await supabase
+      .from("campaign_items")
+      .insert({
+        campaign_id: campaign.id,
+        display_order: items.length,
+        is_temporary: true,
+        temporary_type: type,
+        temporary_name: name,
+        temporary_description: description
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error(error);
+      throw error;
+    }
+
+    // Create a local item representation for temporary items
+    const newItem: CampaignItem = {
+      ...data,
+      task: type === 'task' ? {
+        id: data.id, // Use campaign_item id as pseudo-task id
+        title: name,
+        description: description,
+        status: 'pending',
+        priority: 'medium',
+        time_logged: 0
+      } : undefined,
+      project: type === 'project' ? {
+        id: data.id, // Use campaign_item id as pseudo-project id
+        name: name,
+        description: description,
+        status: 'active',
+        time_spent: 0
+      } : undefined
+    };
+    
+    setItems(prev => [...prev, newItem]);
+    return newItem;
+  }, [campaign, items.length]);
+
+  // Mark a temporary item as permanent (save to main tables)
+  const markItemPermanent = useCallback(async (itemId: string) => {
+    const item = items.find(i => i.id === itemId);
+    if (!item || !item.is_temporary) return;
+
+    const userId = (await supabase.auth.getUser()).data.user?.id;
+    if (!userId) return;
+
+    try {
+      if (item.temporary_type === 'task') {
+        // Create task in main tasks table
+        const { data: newTask, error } = await supabase
+          .from("tasks")
+          .insert({
+            user_id: userId,
+            title: item.temporary_name || 'Untitled Quest',
+            description: item.temporary_description,
+            status: 'pending',
+            priority: 'medium',
+            time_logged: Math.ceil((item.time_spent || 0) / 60)
+          })
+          .select("id")
+          .single();
+
+        if (error) throw error;
+
+        // Update campaign_item to link to real task and clear temporary flags
+        await supabase
+          .from("campaign_items")
+          .update({
+            task_id: newTask.id,
+            is_temporary: false,
+            temporary_type: null,
+            temporary_name: null,
+            temporary_description: null
+          })
+          .eq("id", itemId);
+
+        // Update local state
+        setItems(prev => prev.map(i => 
+          i.id === itemId 
+            ? {
+                ...i,
+                task_id: newTask.id,
+                is_temporary: false,
+                temporary_type: null,
+                temporary_name: null,
+                temporary_description: null,
+                task: {
+                  id: newTask.id,
+                  title: item.temporary_name || 'Untitled Quest',
+                  description: item.temporary_description || null,
+                  status: 'pending',
+                  priority: 'medium',
+                  time_logged: Math.ceil((item.time_spent || 0) / 60)
+                }
+              }
+            : i
+        ));
+      } else if (item.temporary_type === 'project') {
+        // Create project in main projects table
+        const { data: newProject, error } = await supabase
+          .from("projects")
+          .insert({
+            user_id: userId,
+            name: item.temporary_name || 'Untitled Territory',
+            description: item.temporary_description,
+            status: 'active',
+            time_spent: Math.ceil((item.time_spent || 0) / 60)
+          })
+          .select("id")
+          .single();
+
+        if (error) throw error;
+
+        // Update campaign_item to link to real project and clear temporary flags
+        await supabase
+          .from("campaign_items")
+          .update({
+            project_id: newProject.id,
+            is_temporary: false,
+            temporary_type: null,
+            temporary_name: null,
+            temporary_description: null
+          })
+          .eq("id", itemId);
+
+        // Update local state
+        setItems(prev => prev.map(i => 
+          i.id === itemId 
+            ? {
+                ...i,
+                project_id: newProject.id,
+                is_temporary: false,
+                temporary_type: null,
+                temporary_name: null,
+                temporary_description: null,
+                project: {
+                  id: newProject.id,
+                  name: item.temporary_name || 'Untitled Territory',
+                  description: item.temporary_description || null,
+                  status: 'active',
+                  time_spent: Math.ceil((item.time_spent || 0) / 60)
+                }
+              }
+            : i
+        ));
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Failed to mark item permanent:", error);
+      throw error;
+    }
+  }, [items]);
+
   // Set current task index (only allow selecting non-completed items)
   const setCurrentTaskIndex = useCallback((index: number) => {
     const targetItem = items[index];
@@ -621,6 +787,8 @@ export function useCampaignSession(campaign: Campaign | null) {
     reorderItems,
     addTaskToCampaign,
     addProjectToCampaign,
+    addTemporaryItem,
+    markItemPermanent,
     setCurrentTaskIndex,
     uncheckItem,
     updateItemTimeManually,

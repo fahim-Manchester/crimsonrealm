@@ -2,7 +2,7 @@ import { useState, forwardRef } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, CheckCircle, Ban, Clock, Edit2, X, Check, CornerLeftUp } from "lucide-react";
+import { GripVertical, CheckCircle, Ban, Clock, Edit2, X, Check, CornerLeftUp, Bookmark } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ interface SortableTaskItemProps {
   onUncheck?: () => void;
   onUpdateTime?: (minutes: number) => void;
   onUnembed?: () => void;
+  onMarkPermanent?: () => void;
   sessionTimeSeconds?: number;
   indentLevel?: number;
   displayTimeSeconds?: number;
@@ -48,6 +49,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
   onUncheck,
   onUpdateTime,
   onUnembed,
+  onMarkPermanent,
   sessionTimeSeconds = 0,
   indentLevel = 0,
   displayTimeSeconds,
@@ -77,13 +79,17 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
     transition
   };
 
-  const title = item.task?.title || item.project?.name || "Unknown";
-  const isTask = !!item.task_id;
-  const isTerritory = !!item.project_id;
+  // For temporary items, use temporary_name; for linked items, use task/project title
+  const title = item.is_temporary 
+    ? item.temporary_name || "Untitled"
+    : item.task?.title || item.project?.name || "Unknown";
+  const isTask = !!item.task_id || item.temporary_type === 'task';
+  const isTerritory = !!item.project_id || item.temporary_type === 'project';
   const isCompleted = item.status === 'completed';
   const isAbandoned = item.status === 'abandoned';
   const totalTimeSpent = displayTimeSeconds ?? ((item.time_spent || 0) + sessionTimeSeconds);
   const isNested = indentLevel > 0;
+  const isTemporary = item.is_temporary;
 
   const handleTimeEditStart = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -117,6 +123,13 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
     e.stopPropagation();
     if (onUnembed) {
       onUnembed();
+    }
+  };
+
+  const handleMarkPermanent = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onMarkPermanent) {
+      onMarkPermanent();
     }
   };
 
@@ -185,13 +198,28 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
         <span className="text-sm">
           {isTask ? "⚒️" : "🗺️"}
         </span>
+
+        {/* Temporary item indicator with Mark button */}
+        {isTemporary && onMarkPermanent && !isDragActive && (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6 opacity-70 hover:opacity-100 bg-primary/10 hover:bg-primary/20"
+            onClick={handleMarkPermanent}
+            title={`Mark this ${isTask ? 'Quest' : 'Territory'} as permanent`}
+          >
+            <Bookmark className="w-3 h-3 text-primary" />
+          </Button>
+        )}
       
         <span className={cn(
           "flex-1 font-crimson text-sm truncate",
           isCompleted && "line-through",
-          isAbandoned && "line-through text-muted-foreground"
+          isAbandoned && "line-through text-muted-foreground",
+          isTemporary && "italic text-muted-foreground"
         )}>
           {title}
+          {isTemporary && <span className="text-[10px] ml-1 text-primary">(temp)</span>}
         </span>
 
         {/* Time display/edit */}
