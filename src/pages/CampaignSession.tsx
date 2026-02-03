@@ -43,6 +43,8 @@ const CampaignSession = () => {
     reorderItems,
     addTaskToCampaign,
     addProjectToCampaign,
+    addTemporaryItem,
+    markItemPermanent,
     setCurrentTaskIndex,
     uncheckItem,
     updateItemTimeManually,
@@ -115,6 +117,25 @@ const CampaignSession = () => {
   const handleAddProject = async (projectId: string) => {
     await addProjectToCampaign(projectId);
     toast.success("Territory added to campaign");
+  };
+
+  const handleAddTemporaryItem = async (type: 'task' | 'project', name: string, description: string | null) => {
+    await addTemporaryItem(type, name, description);
+  };
+
+  const handleMarkPermanent = async (itemId: string) => {
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+    
+    const typeLabel = item.temporary_type === 'task' ? 'Quest' : 'Territory';
+    if (confirm(`Save this ${typeLabel} to your main ${typeLabel === 'Quest' ? 'Forge' : 'Territories'} list?`)) {
+      try {
+        await markItemPermanent(itemId);
+        toast.success(`${typeLabel} saved to ${typeLabel === 'Quest' ? 'Forge' : 'Territories'}!`);
+      } catch {
+        toast.error(`Failed to save ${typeLabel}`);
+      }
+    }
   };
 
   const handleUncheckItem = async (itemId: string) => {
@@ -324,6 +345,7 @@ const CampaignSession = () => {
                 onSetParent={handleSetParent}
                 onUncheckItem={handleUncheckItem}
                 onUpdateTime={handleUpdateItemTime}
+                onMarkPermanent={handleMarkPermanent}
               />
             )}
           </div>
@@ -338,6 +360,7 @@ const CampaignSession = () => {
         existingProjectIds={existingProjectIds}
         onAddTask={handleAddTask}
         onAddProject={handleAddProject}
+        onAddTemporaryItem={handleAddTemporaryItem}
       />
     </div>
   );

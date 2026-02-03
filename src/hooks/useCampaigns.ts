@@ -28,6 +28,12 @@ export interface CampaignItem {
   completed_session: number | null;
   parent_item_id: string | null;
   created_at: string;
+  // Temporary item fields
+  is_temporary: boolean;
+  temporary_type: string | null;
+  temporary_name: string | null;
+  temporary_description: string | null;
+  // Joined relations
   task?: {
     id: string;
     title: string;

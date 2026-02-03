@@ -30,6 +30,7 @@ interface AddItemDialogProps {
   existingProjectIds: string[];
   onAddTask: (taskId: string) => Promise<void>;
   onAddProject: (projectId: string) => Promise<void>;
+  onAddTemporaryItem: (type: 'task' | 'project', name: string, description: string | null) => Promise<void>;
 }
 
 export function AddItemDialog({
@@ -38,7 +39,8 @@ export function AddItemDialog({
   existingTaskIds,
   existingProjectIds,
   onAddTask,
-  onAddProject
+  onAddProject,
+  onAddTemporaryItem
 }: AddItemDialogProps) {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -143,23 +145,12 @@ export function AddItemDialog({
 
     setIsCreatingQuest(true);
     try {
-      // Create the task in database
-      const { data: newTask, error } = await supabase
-        .from("tasks")
-        .insert({
-          user_id: user.id,
-          title: validation.data.title,
-          description: validation.data.description || null,
-          status: "pending",
-          priority: "medium"
-        })
-        .select("id")
-        .single();
-
-      if (error) throw error;
-
-      // Add to campaign
-      await onAddTask(newTask.id);
+      // Create a temporary campaign item (NOT in main tasks table)
+      await onAddTemporaryItem(
+        'task',
+        validation.data.title,
+        validation.data.description || null
+      );
       
       toast.success("⚡ Pop-up Quest added!");
       setQuestTitle("");
@@ -188,22 +179,12 @@ export function AddItemDialog({
 
     setIsCreatingTerritory(true);
     try {
-      // Create the project in database
-      const { data: newProject, error } = await supabase
-        .from("projects")
-        .insert({
-          user_id: user.id,
-          name: validation.data.name,
-          description: validation.data.description || null,
-          status: "active"
-        })
-        .select("id")
-        .single();
-
-      if (error) throw error;
-
-      // Add to campaign
-      await onAddProject(newProject.id);
+      // Create a temporary campaign item (NOT in main projects table)
+      await onAddTemporaryItem(
+        'project',
+        validation.data.name,
+        validation.data.description || null
+      );
       
       toast.success("🗺️ Hidden Territory discovered!");
       setTerritoryName("");
