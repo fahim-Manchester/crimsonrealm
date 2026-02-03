@@ -1,190 +1,174 @@
 
 
-# Diary Feature Implementation Plan
+# AI Usage Cap System for Beta Testers
 
 ## Overview
-This plan replaces the "Settings" card on the Home dashboard with a new "Diary" feature and moves Settings to a gear icon in the top-right corner of the header. The Diary provides an immersive book-reading experience where users can create books on a shelf, link entries from other modules, write free-form content, and read using a page-flip animation.
+This plan creates a usage tracking and rate limiting system to protect your Lovable AI credits during beta testing. Each user will have daily AI request limits, and when they exceed these limits, they'll see a friendly message instead of the AI feature working (preventing credit drain).
 
 ---
 
-## Visual Changes Summary
+## How It Works
 
-**Home Page Header:**
-- Add a gear icon (Settings) to the right of the user email in the navigation bar
-- Clicking it navigates to `/settings` (placeholder page for now)
+The system tracks every AI request per user per day. When a user hits their daily limit, AI features gracefully degrade:
+- "Generate Name" and "AI Guess" buttons show a message like "Daily AI limit reached"
+- "Cleave" feature shows a similar message
+- Users can still use the app normally - only AI features are restricted
 
-**Dashboard Grid:**
-- Replace the grayed-out "Settings" card with a new "Diary" card
-- Diary card links to `/diary`
+---
 
-**Diary Page:**
-- Displays an empty bookshelf UI where books appear as visual book images
-- Each book has three action icons: Edit (link entries), Scribe (write), Read (page-flip view)
+## Configuration Options
+
+You can configure:
+- **Daily request limit per user** (e.g., 10 requests/day)
+- **Which actions count** (name generation, difficulty guessing, cleaving)
+- **Reset time** (midnight UTC each day)
 
 ---
 
 ## Database Schema
 
-Two new tables are required:
+A new `ai_usage` table to track requests:
 
-### `diary_books` table
 | Column | Type | Description |
 |--------|------|-------------|
 | id | uuid | Primary key |
-| user_id | uuid | References auth.users |
-| title | text | Book name |
-| cover_color | text | Color theme for book spine/cover |
-| created_at | timestamp | Auto-generated |
-| updated_at | timestamp | Auto-updated |
+| user_id | uuid | The user making requests |
+| action_type | text | Which AI action (generate_name, guess_difficulty, cleave) |
+| created_at | timestamp | When the request was made |
 
-### `diary_entries` table
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| book_id | uuid | References diary_books |
-| entry_type | text | 'linked' or 'scribed' |
-| content | text | Free-form content (for scribed entries) |
-| resource_id | uuid | Optional link to resources |
-| project_id | uuid | Optional link to projects |
-| task_id | uuid | Optional link to tasks |
-| campaign_id | uuid | Optional link to campaigns |
-| note | text | Personal note for linked entries |
-| page_number | int | Page ordering |
-| created_at | timestamp | Auto-generated |
-
-RLS policies will be applied to ensure users only access their own books and entries.
+This allows counting requests per user per day with a simple query.
 
 ---
 
-## New Dependencies
-
-```
-react-pageflip
-```
-
-This library provides the `HTMLFlipBook` component for the page-turning animation in Read mode.
-
----
-
-## File Structure
+## Architecture
 
 ```text
-src/
-  components/
-    diary/
-      BookShelf.tsx          # Visual shelf with book items
-      BookCard.tsx           # Individual book with 3 action icons
-      EditBookDialog.tsx     # Dialog to link entries from other modules
-      ScribeBookDialog.tsx   # Free-form writing interface
-      ReadBookDialog.tsx     # Page-flip reading experience
-    ui/
-      book-slider.tsx        # Page-flip component wrapper
-  hooks/
-    useDiary.ts              # CRUD operations for books and entries
-  pages/
-    Diary.tsx                # Main diary page with shelf
-    Settings.tsx             # Placeholder settings page
+Frontend                    Edge Function                   AI Gateway
+   |                              |                              |
+   |-- Request AI feature ------->|                              |
+   |                              |-- Check usage count -------->|
+   |                              |<-- Count for today ----------|
+   |                              |                              |
+   |                              |-- If limit exceeded -------->|
+   |<-- "Limit reached" error ----|                              |
+   |                              |                              |
+   |                              |-- If allowed --------------->|
+   |                              |     - Call AI gateway ------>|
+   |                              |<-------- Response -----------|
+   |                              |     - Log usage ------------>|
+   |<-- AI response --------------|                              |
 ```
 
 ---
 
 ## Implementation Steps
 
-### Step 1: Database Migration
-Create the `diary_books` and `diary_entries` tables with appropriate foreign keys and RLS policies restricting access to the authenticated user.
+### Step 1: Create ai_usage Table
+Create a new database table to store usage records with RLS policies ensuring users can only see their own usage (though edge functions use service role to bypass this for tracking).
 
-### Step 2: Install react-pageflip
-Add the npm dependency for the page-flip animation library.
+### Step 2: Add Usage Limit Configuration
+Create a configuration constant in a shared location defining:
+- `DAILY_AI_LIMIT = 10` (adjustable)
+- List of tracked action types
 
-### Step 3: Create book-slider.tsx Component
-A reusable component that wraps `HTMLFlipBook` with gothic styling. Pages are passed as children and rendered with appropriate pagination.
+### Step 3: Update campaign-ai Edge Function
+Before calling the AI gateway:
+1. Get user ID from request (via auth header or passed in body)
+2. Count today's requests for this user
+3. If count >= limit, return a `429 Too Many Requests` with friendly message
+4. After successful AI call, insert a usage record
 
-### Step 4: Create useDiary Hook
-Handles:
-- Fetching all books for the user
-- Creating/deleting books
-- Fetching entries for a specific book
-- Adding linked entries (from Chronicles, Territories, Forge, Campaigns)
-- Adding scribed entries (free-form text, splitting on `===` for page breaks)
-- Updating entry content
+### Step 4: Update cleave Edge Function
+Same pattern as campaign-ai:
+1. Check usage count
+2. Return limit error if exceeded
+3. Log usage after successful call
 
-### Step 5: Create BookShelf Component
-Displays books in a grid/shelf layout. Each book is rendered as a visual card with:
-- Book title on spine
-- Color-coded cover
-- Three icon buttons: Edit (Pencil), Scribe (Feather/Pen), Read (Book-Open)
-
-### Step 6: Create BookCard Component
-Individual book display with hover effects and action icons. Clicking an icon opens the corresponding dialog.
-
-### Step 7: Create EditBookDialog Component
-Multi-tab interface to select entries from:
-- **Chronicles** (resources)
-- **Territories** (projects)
-- **Forge** (tasks)
-- **Campaign** (campaigns)
-
-Each selected item can have a personal note attached. Saves as `entry_type: 'linked'`.
-
-### Step 8: Create ScribeBookDialog Component
-A free-form writing interface with:
-- Large textarea for content entry
-- Auto-save functionality (debounced)
-- Instructions explaining that `===` on an empty line creates a new page
-- Parses content on save, splitting by `===` into separate page entries
-
-### Step 9: Create ReadBookDialog Component
-Uses the book-slider component to display all entries:
-- Linked entries show the item name, type badge, and personal note
-- Scribed entries show the free-form content
-- Pages can be flipped with mouse drag or arrow buttons
-
-### Step 10: Create Diary.tsx Page
-Main page using PageLayout with:
-- "Add Book" button to create a new book (prompts for title and color)
-- BookShelf component displaying all user books
-- Empty state when no books exist
-
-### Step 11: Create Settings.tsx Placeholder Page
-Simple page with "Settings coming soon" message, maintaining the gothic aesthetic.
-
-### Step 12: Update Home.tsx
-- Add Settings gear icon to header navigation (between email and "Leave Realm" button)
-- Replace Settings card with Diary card linking to `/diary`
-
-### Step 13: Update App.tsx Routes
-Add new routes:
-- `/diary` - Diary page
-- `/settings` - Settings placeholder
+### Step 5: Update Frontend Error Handling
+The frontend already handles 429 errors with toast messages. We'll ensure the error message clearly indicates it's a daily limit (not a temporary rate limit).
 
 ---
 
-## Technical Considerations
+## Technical Details
 
-### Page Breaks for Scribed Content
-When saving scribed content, the hook splits text on lines containing only `===`:
+### Usage Check Query (in Edge Functions)
 ```typescript
-const pages = content.split(/\n===\n/).filter(p => p.trim());
+// Supabase client with service role for internal operations
+const supabaseAdmin = createClient(
+  Deno.env.get('SUPABASE_URL')!,
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+);
+
+// Get today's start (UTC midnight)
+const todayStart = new Date();
+todayStart.setUTCHours(0, 0, 0, 0);
+
+// Count requests for this user today
+const { count } = await supabaseAdmin
+  .from('ai_usage')
+  .select('*', { count: 'exact', head: true })
+  .eq('user_id', userId)
+  .gte('created_at', todayStart.toISOString());
+
+const DAILY_LIMIT = 10;
+if ((count || 0) >= DAILY_LIMIT) {
+  return new Response(
+    JSON.stringify({ 
+      error: "Daily AI limit reached. Resets at midnight UTC.",
+      code: "DAILY_LIMIT_EXCEEDED"
+    }),
+    { status: 429, headers: corsHeaders }
+  );
+}
 ```
-Each segment becomes a separate `diary_entries` row with incrementing `page_number`.
 
-### Book Cover Colors
-Predefined color palette matching the gothic theme:
-- Crimson (`#8B0000`)
-- Midnight Blue (`#191970`)
-- Forest Green (`#228B22`)
-- Gold (`#DAA520`)
-- Purple (`#4B0082`)
-- Charcoal (`#36454F`)
+### Logging Usage After Success
+```typescript
+// After successful AI response
+await supabaseAdmin.from('ai_usage').insert({
+  user_id: userId,
+  action_type: action // 'generate_name', 'guess_difficulty', 'cleave'
+});
+```
 
-### Page-Flip Component Styling
-The book-slider will use fixed dimensions (400px width x 500px height) with gothic-styled pages featuring parchment textures via CSS.
+### Getting User ID in Edge Functions
+The edge functions currently have `verify_jwt = false`. To identify users, we'll:
+1. Pass `userId` in the request body from the authenticated frontend
+2. Validate this matches the auth token if provided
 
-### Linking Multiple Entries
-The Edit dialog allows selecting multiple items across all modules. Each selection creates one `diary_entries` row with the appropriate foreign key set.
+---
+
+## Frontend Changes
+
+### Update Error Messages
+In the hooks that call AI functions, differentiate between:
+- `DAILY_LIMIT_EXCEEDED` - "You've reached your daily AI limit (10/day). Resets at midnight UTC."
+- Generic 429 - "Rate limit exceeded. Try again in a moment."
+
+### Optional: Show Remaining Count
+Add a small indicator showing "AI requests: 3/10 remaining today" in the UI.
+
+---
+
+## Adjustable Settings
+
+The daily limit will be defined as a constant in the edge functions. To change it:
+- Update `DAILY_LIMIT` value in both `campaign-ai/index.ts` and `cleave/index.ts`
+- No database changes needed
+
+For a future enhancement, you could add a `settings` table with `ai_daily_limit` to make this configurable without code changes.
 
 ---
 
 ## Summary
-This feature adds a personal journaling system that integrates with all existing modules. Users can document their journey by linking relevant items and writing reflections, then enjoy reading their compiled books with an immersive page-flip experience.
+
+| Feature | Before | After |
+|---------|--------|-------|
+| AI Name Generation | Unlimited | 10/day per user |
+| AI Difficulty Guess | Unlimited | Shared limit with above |
+| AI Cleave | Unlimited | Shared limit with above |
+| Credit Protection | None | Full - requests blocked after limit |
+| User Experience | Unlimited | Clear "limit reached" messages |
+
+This system ensures beta testers can explore AI features while protecting your credits. The 10/day limit is a starting point - you can adjust it based on your credit budget and user feedback.
 
