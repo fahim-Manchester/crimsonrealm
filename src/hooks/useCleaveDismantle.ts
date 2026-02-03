@@ -55,7 +55,7 @@ export function useCleaveDismantle<T extends { id: string }>(
     setCleaving(true);
     try {
       const { data, error } = await supabase.functions.invoke("cleave", {
-        body: { entries, section, numGroups, luckyMode, userId },
+        body: { entries, section, numGroups, luckyMode },
       });
 
       if (error) throw error;
