@@ -1,0 +1,182 @@
+import { useMemo } from "react";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
+import { arrayMove } from "@dnd-kit/sortable";
+import type { CampaignItem } from "@/hooks/useCampaigns";
+import { SortableTaskItem } from "@/components/campaigns/SortableTaskItem";
+
+type DropId = string;
+const nestId = (itemId: string) => `nest:${itemId}`;
+const ROOT_DROP_ID = "root";
+
+function isNestDropId(id: DropId): id is `nest:${string}` {
+  return typeof id === "string" && id.startsWith("nest:");
+}
+
+function unwrapNestDropId(id: `nest:${string}`) {
+  return id.slice("nest:".length);
+}
+
+function buildChildrenMap(items: CampaignItem[]) {
+  const map = new Map<string, CampaignItem[]>();
+  for (const item of items) {
+    if (!item.parent_item_id) continue;
+    const list = map.get(item.parent_item_id) || [];
+    list.push(item);
+    map.set(item.parent_item_id, list);
+  }
+  return map;
+}
+
+function getIndentLevel(item: CampaignItem, byId: Map<string, CampaignItem>) {
+  let level = 0;
+  let cursor = item;
+  const guard = new Set<string>();
+  while (cursor.parent_item_id) {
+    if (guard.has(cursor.id)) break;
+    guard.add(cursor.id);
+    level += 1;
+    const parent = byId.get(cursor.parent_item_id);
+    if (!parent) break;
+    cursor = parent;
+  }
+  return level;
+}
+
+function sumDescendantSeconds(
+  itemId: string,
+  childrenMap: Map<string, CampaignItem[]>,
+  getOwnSeconds: (item: CampaignItem) => number,
+  byId: Map<string, CampaignItem>
+) {
+  const root = byId.get(itemId);
+  if (!root) return 0;
+
+  let sum = getOwnSeconds(root);
+  const stack = [...(childrenMap.get(itemId) || [])];
+  const guard = new Set<string>();
+  while (stack.length) {
+    const cur = stack.pop()!;
+    if (guard.has(cur.id)) continue;
+    guard.add(cur.id);
+
+    sum += getOwnSeconds(cur);
+    const children = childrenMap.get(cur.id);
+    if (children?.length) stack.push(...children);
+  }
+
+  return sum;
+}
+
+function RootDropZone() {
+  const { setNodeRef } = useDroppable({ id: ROOT_DROP_ID });
+  return <div ref={setNodeRef} className="absolute inset-0" />;
+}
+
+interface QuestItemListProps {
+  items: CampaignItem[];
+  currentIndex: number;
+  itemSessionTimes: Record<string, number>;
+  onSelectIndex: (index: number) => void;
+  onReorder: (newItems: CampaignItem[]) => void;
+  onSetParent: (itemId: string, parentItemId: string | null) => void;
+  onUncheckItem: (itemId: string) => void;
+  onUpdateTime: (itemId: string, minutes: number) => void;
+}
+
+export function QuestItemList({
+  items,
+  currentIndex,
+  itemSessionTimes,
+  onSelectIndex,
+  onReorder,
+  onSetParent,
+  onUncheckItem,
+  onUpdateTime,
+}: QuestItemListProps) {
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  const childrenMap = useMemo(() => buildChildrenMap(items), [items]);
+
+  const getOwnSeconds = (item: CampaignItem) => (item.time_spent || 0) + (itemSessionTimes[item.id] || 0);
+
+  const aggregatedSecondsById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of items) {
+      if (!childrenMap.has(item.id)) continue;
+      map.set(item.id, sumDescendantSeconds(item.id, childrenMap, getOwnSeconds, byId));
+    }
+    return map;
+  }, [items, childrenMap, byId, itemSessionTimes]);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    if (activeId === overId) return;
+
+    // Nesting drop target
+    if (isNestDropId(overId)) {
+      const parentId = unwrapNestDropId(overId);
+      if (parentId !== activeId) onSetParent(activeId, parentId);
+      return;
+    }
+
+    // Dropped on root drop zone: un-nest
+    if (overId === ROOT_DROP_ID) {
+      onSetParent(activeId, null);
+      return;
+    }
+
+    // Plain sortable reorder
+    const oldIndex = items.findIndex((i) => i.id === activeId);
+    const newIndex = items.findIndex((i) => i.id === overId);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const newItems = arrayMove(items, oldIndex, newIndex);
+    onReorder(newItems);
+  };
+
+  return (
+    <div className="relative">
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        {/* Allows dropping on empty space to un-nest */}
+        <RootDropZone />
+
+        <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2 relative">
+            {items.map((item, index) => {
+              const indentLevel = getIndentLevel(item, byId);
+              const displaySeconds = aggregatedSecondsById.get(item.id) ?? getOwnSeconds(item);
+              const hasChildren = childrenMap.has(item.id);
+
+              return (
+                <SortableTaskItem
+                  key={item.id}
+                  item={item}
+                  isCurrentTask={index === currentIndex}
+                  indentLevel={indentLevel}
+                  showAggregatedTime={hasChildren}
+                  displayTimeSeconds={displaySeconds}
+                  onSelect={() => onSelectIndex(index)}
+                  onUncheck={() => onUncheckItem(item.id)}
+                  onUpdateTime={(mins) => onUpdateTime(item.id, mins)}
+                  sessionTimeSeconds={index === currentIndex ? (itemSessionTimes[item.id] || 0) : 0}
+                  nestDropId={nestId(item.id)}
+                />
+              );
+            })}
+          </div>
+        </SortableContext>
+      </DndContext>
+    </div>
+  );
+}

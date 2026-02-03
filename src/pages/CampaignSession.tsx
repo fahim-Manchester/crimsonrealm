@@ -1,14 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Play, Pause, CheckCircle, Plus, LogOut, RotateCcw, Ban } from "lucide-react";
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampaignSession } from "@/hooks/useCampaignSession";
 import { SessionClock } from "@/components/campaigns/SessionClock";
-import { SortableTaskItem } from "@/components/campaigns/SortableTaskItem";
+import { QuestItemList } from "@/components/campaigns/QuestItemList";
 import { AddItemDialog } from "@/components/campaigns/AddItemDialog";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { toast } from "sonner";
@@ -47,15 +45,9 @@ const CampaignSession = () => {
     addProjectToCampaign,
     setCurrentTaskIndex,
     uncheckItem,
-    updateItemTimeManually
+    updateItemTimeManually,
+    setItemParent
   } = useCampaignSession(campaign);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
 
   // Fetch campaign
   useEffect(() => {
@@ -89,16 +81,9 @@ const CampaignSession = () => {
     return (sessionState.campaignTotalTime * 60) + sessionState.sessionTime;
   }, [sessionState.campaignTotalTime, sessionState.sessionTime]);
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    
-    if (over && active.id !== over.id) {
-      const oldIndex = items.findIndex(item => item.id === active.id);
-      const newIndex = items.findIndex(item => item.id === over.id);
-      
-      const newItems = arrayMove(items, oldIndex, newIndex);
-      reorderItems(newItems);
-    }
+  const handleSetParent = async (itemId: string, parentItemId: string | null) => {
+    await setItemParent(itemId, parentItemId);
+    toast.success(parentItemId ? "Item embedded" : "Item unembedded");
   };
 
   const handleEndSession = async () => {
@@ -330,34 +315,16 @@ const CampaignSession = () => {
                 </Button>
               </div>
             ) : (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={items.map(i => i.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="space-y-2">
-                    {items.map((item, index) => (
-                      <SortableTaskItem
-                        key={item.id}
-                        item={item}
-                        isCurrentTask={index === sessionState.currentTaskIndex}
-                        onSelect={() => setCurrentTaskIndex(index)}
-                        onUncheck={() => handleUncheckItem(item.id)}
-                        onUpdateTime={(mins) => handleUpdateItemTime(item.id, mins)}
-                        sessionTimeSeconds={
-                          index === sessionState.currentTaskIndex 
-                            ? sessionState.taskTime 
-                            : itemSessionTimes[item.id] || 0
-                        }
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
+              <QuestItemList
+                items={items}
+                currentIndex={sessionState.currentTaskIndex}
+                itemSessionTimes={itemSessionTimes}
+                onSelectIndex={setCurrentTaskIndex}
+                onReorder={reorderItems}
+                onSetParent={handleSetParent}
+                onUncheckItem={handleUncheckItem}
+                onUpdateTime={handleUpdateItemTime}
+              />
             )}
           </div>
         </section>

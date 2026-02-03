@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, CheckCircle, Ban, Clock, Edit2, X, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,10 @@ interface SortableTaskItemProps {
   onUncheck?: () => void;
   onUpdateTime?: (minutes: number) => void;
   sessionTimeSeconds?: number;
+  indentLevel?: number;
+  displayTimeSeconds?: number;
+  showAggregatedTime?: boolean;
+  nestDropId?: string;
 }
 
 const formatTime = (seconds: number | null) => {
@@ -40,7 +45,11 @@ export function SortableTaskItem({
   onSelect, 
   onUncheck,
   onUpdateTime,
-  sessionTimeSeconds = 0
+  sessionTimeSeconds = 0,
+  indentLevel = 0,
+  displayTimeSeconds,
+  showAggregatedTime = false,
+  nestDropId
 }: SortableTaskItemProps) {
   const [isEditingTime, setIsEditingTime] = useState(false);
   const [editTimeValue, setEditTimeValue] = useState("");
@@ -54,6 +63,11 @@ export function SortableTaskItem({
     isDragging
   } = useSortable({ id: item.id });
 
+  const { setNodeRef: setNestRef, isOver: isNestOver } = useDroppable({
+    id: nestDropId || `nest:${item.id}`,
+    disabled: !nestDropId,
+  });
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition
@@ -61,9 +75,10 @@ export function SortableTaskItem({
 
   const title = item.task?.title || item.project?.name || "Unknown";
   const isTask = !!item.task_id;
+  const isTerritory = !!item.project_id;
   const isCompleted = item.status === 'completed';
   const isAbandoned = item.status === 'abandoned';
-  const totalTimeSpent = (item.time_spent || 0) + sessionTimeSeconds;
+  const totalTimeSpent = displayTimeSeconds ?? ((item.time_spent || 0) + sessionTimeSeconds);
 
   const handleTimeEditStart = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -104,11 +119,12 @@ export function SortableTaskItem({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-3 p-3 rounded-sm border transition-all",
+        "relative flex items-center gap-3 p-3 rounded-sm border transition-all",
         isDragging && "opacity-50 z-50",
         (isCompleted || isAbandoned) && "opacity-60",
         isCompleted && "bg-accent/10",
         isAbandoned && "bg-destructive/10",
+        isTerritory && !isCompleted && !isAbandoned && "bg-accent/5 border-accent/40",
         isCurrentTask 
           ? "border-primary bg-primary/20 ring-2 ring-primary/30 cursor-default" 
           : (isCompleted || isAbandoned)
@@ -117,6 +133,21 @@ export function SortableTaskItem({
       )}
       onClick={handleClick}
     >
+      {/* Nest drop zone (visible when dragging over) */}
+      {nestDropId && (
+        <div
+          ref={setNestRef}
+          className={cn(
+            "absolute inset-0 rounded-sm",
+            isNestOver && "ring-2 ring-accent/40"
+          )}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Indentation */}
+      {indentLevel > 0 && <div className="w-0" style={{ marginLeft: indentLevel * 18 }} />}
+
       <button
         {...attributes}
         {...listeners}
@@ -163,7 +194,7 @@ export function SortableTaskItem({
             {totalTimeSpent > 0 && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {formatTimeMinutes(totalTimeSpent)}
+                {formatTimeMinutes(totalTimeSpent)}{showAggregatedTime ? " total" : ""}
               </span>
             )}
             {onUpdateTime && !isCurrentTask && (
