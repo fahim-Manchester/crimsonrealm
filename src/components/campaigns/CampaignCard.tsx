@@ -73,11 +73,12 @@ export function CampaignCard({
     };
   }, [isActive, campaign.id, elapsedSeconds, onTimeUpdate]);
 
-  // Calculate progress including live elapsed time
+  // Calculate progress including live elapsed time - allow overtime (>100%)
   const totalTimeMinutes = campaign.time_spent + Math.floor(elapsedSeconds / 60);
   const progressPercent = campaign.planned_time > 0
-    ? Math.min((totalTimeMinutes / campaign.planned_time) * 100, 100)
+    ? (totalTimeMinutes / campaign.planned_time) * 100
     : 0;
+  const isOvertime = progressPercent > 100;
 
   const formatTime = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
@@ -198,9 +199,31 @@ export function CampaignCard({
         </div>
       </div>
 
-      {/* Progress Bar */}
+      {/* Progress Bar - shows overtime with different styling */}
       <div className="mb-3">
-        <Progress value={progressPercent} className="h-2" />
+        <div className="relative h-2 bg-muted rounded-full overflow-hidden">
+          <div 
+            className={`absolute left-0 top-0 h-full rounded-full transition-all ${
+              isOvertime ? "bg-destructive" : "bg-primary"
+            }`}
+            style={{ width: `${Math.min(progressPercent, 100)}%` }}
+          />
+          {isOvertime && (
+            <div 
+              className="absolute top-0 h-full bg-destructive/50 animate-pulse rounded-r-full"
+              style={{ 
+                left: '100%',
+                width: `${Math.min(progressPercent - 100, 100)}%`,
+                transform: 'translateX(-100%)'
+              }}
+            />
+          )}
+        </div>
+        {isOvertime && (
+          <p className="text-xs text-destructive mt-1 font-crimson">
+            ⚠️ {Math.round(progressPercent - 100)}% over planned time
+          </p>
+        )}
       </div>
 
       {/* Expanded Items */}
