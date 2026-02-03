@@ -18,30 +18,39 @@ export type Database = {
         Row: {
           campaign_id: string
           completed: boolean | null
+          completed_session: number | null
           created_at: string
           display_order: number | null
           id: string
+          parent_item_id: string | null
           project_id: string | null
+          status: string | null
           task_id: string | null
           time_spent: number | null
         }
         Insert: {
           campaign_id: string
           completed?: boolean | null
+          completed_session?: number | null
           created_at?: string
           display_order?: number | null
           id?: string
+          parent_item_id?: string | null
           project_id?: string | null
+          status?: string | null
           task_id?: string | null
           time_spent?: number | null
         }
         Update: {
           campaign_id?: string
           completed?: boolean | null
+          completed_session?: number | null
           created_at?: string
           display_order?: number | null
           id?: string
+          parent_item_id?: string | null
           project_id?: string | null
+          status?: string | null
           task_id?: string | null
           time_spent?: number | null
         }
@@ -51,6 +60,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_items_parent_item_id_fkey"
+            columns: ["parent_item_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_items"
             referencedColumns: ["id"]
           },
           {
@@ -76,6 +92,7 @@ export type Database = {
           id: string
           name: string
           planned_time: number | null
+          session_count: number | null
           status: string | null
           time_spent: number | null
           updated_at: string
@@ -87,6 +104,7 @@ export type Database = {
           id?: string
           name: string
           planned_time?: number | null
+          session_count?: number | null
           status?: string | null
           time_spent?: number | null
           updated_at?: string
@@ -98,6 +116,7 @@ export type Database = {
           id?: string
           name?: string
           planned_time?: number | null
+          session_count?: number | null
           status?: string | null
           time_spent?: number | null
           updated_at?: string

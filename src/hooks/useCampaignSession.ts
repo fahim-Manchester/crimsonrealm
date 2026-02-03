@@ -6,8 +6,14 @@ export interface SessionState {
   isRunning: boolean;
   campaignTotalTime: number; // Total time from DB (in minutes)
   sessionTime: number; // Time this session (in seconds)
-  taskTime: number; // Time on current task (in seconds)
+  taskTime: number; // Time on current task in this session (in seconds)
   currentTaskIndex: number;
+  currentSessionNumber: number; // Which session we're on
+}
+
+// Track accumulated time per item during this session
+export interface ItemSessionTime {
+  [itemId: string]: number; // seconds spent on this item this session
 }
 
 export function useCampaignSession(campaign: Campaign | null) {
@@ -17,9 +23,11 @@ export function useCampaignSession(campaign: Campaign | null) {
     campaignTotalTime: campaign?.time_spent || 0,
     sessionTime: 0,
     taskTime: 0,
-    currentTaskIndex: 0
+    currentTaskIndex: 0,
+    currentSessionNumber: (campaign?.session_count || 0) + 1
   });
   const [loading, setLoading] = useState(true);
+  const [itemSessionTimes, setItemSessionTimes] = useState<ItemSessionTime>({});
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const sessionStartTimeRef = useRef<number>(0);
@@ -48,6 +56,14 @@ export function useCampaignSession(campaign: Campaign | null) {
         project: item.project as CampaignItem['project']
       }));
       setItems(mappedItems);
+      
+      // Find first non-completed item as initial index
+      const firstActiveIndex = mappedItems.findIndex(
+        item => item.status !== 'completed' && item.status !== 'abandoned'
+      );
+      if (firstActiveIndex >= 0) {
+        setSessionState(prev => ({ ...prev, currentTaskIndex: firstActiveIndex }));
+      }
     }
     setLoading(false);
   }, [campaign]);
@@ -60,13 +76,22 @@ export function useCampaignSession(campaign: Campaign | null) {
     setSessionState(prev => ({ ...prev, isRunning: true }));
     
     intervalRef.current = setInterval(() => {
-      setSessionState(prev => ({
-        ...prev,
-        sessionTime: prev.sessionTime + 1,
-        taskTime: prev.taskTime + 1
-      }));
+      setSessionState(prev => {
+        const currentItem = items[prev.currentTaskIndex];
+        if (currentItem) {
+          setItemSessionTimes(prevTimes => ({
+            ...prevTimes,
+            [currentItem.id]: (prevTimes[currentItem.id] || 0) + 1
+          }));
+        }
+        return {
+          ...prev,
+          sessionTime: prev.sessionTime + 1,
+          taskTime: prev.taskTime + 1
+        };
+      });
     }, 1000);
-  }, []);
+  }, [items]);
 
   // Pause timer
   const pauseTimer = useCallback(() => {
@@ -77,68 +102,247 @@ export function useCampaignSession(campaign: Campaign | null) {
     setSessionState(prev => ({ ...prev, isRunning: false }));
   }, []);
 
-  // Complete current task and move to next
-  const completeCurrentTask = useCallback(async () => {
-    const currentItem = items[sessionState.currentTaskIndex];
-    if (!currentItem) return;
-
-    const timeSpentSeconds = sessionState.taskTime;
+  // Save time for a specific item to both campaign_item and its source (task/project)
+  const saveItemTime = useCallback(async (item: CampaignItem, timeSpentSeconds: number) => {
+    if (timeSpentSeconds <= 0) return;
+    
     const timeSpentMinutes = Math.ceil(timeSpentSeconds / 60);
 
     // Save time to campaign_item
     await supabase
       .from("campaign_items")
       .update({ 
+        time_spent: (item.time_spent || 0) + timeSpentSeconds
+      })
+      .eq("id", item.id);
+
+    // If it's a task, add time to the task's time_logged
+    if (item.task_id && item.task) {
+      const currentTaskTime = item.task.time_logged || 0;
+      await supabase
+        .from("tasks")
+        .update({ time_logged: currentTaskTime + timeSpentMinutes })
+        .eq("id", item.task_id);
+    }
+
+    // If it's a project, add time to the project's time_spent
+    if (item.project_id && item.project) {
+      const currentProjectTime = item.project.time_spent || 0;
+      await supabase
+        .from("projects")
+        .update({ time_spent: currentProjectTime + timeSpentMinutes })
+        .eq("id", item.project_id);
+    }
+  }, []);
+
+  // Switch to a different task (seamless switch, saves current task time)
+  const switchToTask = useCallback(async (newIndex: number) => {
+    const currentItem = items[sessionState.currentTaskIndex];
+    const currentItemTime = sessionState.taskTime;
+    
+    // Save time for current item before switching
+    if (currentItem && currentItemTime > 0) {
+      await saveItemTime(currentItem, currentItemTime);
+      
+      // Update local item with new time
+      setItems(prev => prev.map(item => 
+        item.id === currentItem.id 
+          ? { ...item, time_spent: (item.time_spent || 0) + currentItemTime } 
+          : item
+      ));
+    }
+    
+    // Get the accumulated time for the new item this session
+    const newItem = items[newIndex];
+    const accumulatedTime = newItem ? (itemSessionTimes[newItem.id] || 0) : 0;
+    
+    // Switch to new task, restoring its accumulated time
+    setSessionState(prev => ({
+      ...prev,
+      currentTaskIndex: newIndex,
+      taskTime: accumulatedTime
+    }));
+  }, [items, sessionState.currentTaskIndex, sessionState.taskTime, saveItemTime, itemSessionTimes]);
+
+  // Complete current task and move to next uncompleted
+  const completeCurrentTask = useCallback(async () => {
+    const currentItem = items[sessionState.currentTaskIndex];
+    if (!currentItem) return;
+
+    const timeSpentSeconds = sessionState.taskTime;
+
+    // Save time to campaign_item and mark as completed
+    await supabase
+      .from("campaign_items")
+      .update({ 
         completed: true,
+        status: 'completed',
+        completed_session: sessionState.currentSessionNumber,
         time_spent: (currentItem.time_spent || 0) + timeSpentSeconds
       })
       .eq("id", currentItem.id);
 
-    // If it's a task, add time to the task's time_logged
-    if (currentItem.task_id && currentItem.task) {
-      const currentTaskTime = currentItem.task.time_logged || 0;
-      await supabase
-        .from("tasks")
-        .update({ time_logged: currentTaskTime + timeSpentMinutes })
-        .eq("id", currentItem.task_id);
-    }
+    // Save time to source task/project
+    await saveItemTime(currentItem, timeSpentSeconds);
 
-    // If it's a project, add time to the project's time_spent
-    if (currentItem.project_id && currentItem.project) {
-      const currentProjectTime = (currentItem.project as any).time_spent || 0;
-      await supabase
-        .from("projects")
-        .update({ time_spent: currentProjectTime + timeSpentMinutes })
-        .eq("id", currentItem.project_id);
-    }
+    // Update local items
+    setItems(prev => prev.map(item => 
+      item.id === currentItem.id 
+        ? { 
+            ...item, 
+            completed: true, 
+            status: 'completed',
+            completed_session: sessionState.currentSessionNumber,
+            time_spent: (item.time_spent || 0) + timeSpentSeconds 
+          } 
+        : item
+    ));
 
-    // Reset task timer and move to next
+    // Find next uncompleted item
+    const updatedItems = items.map(item => 
+      item.id === currentItem.id ? { ...item, status: 'completed' as const } : item
+    );
+    const nextActiveIndex = updatedItems.findIndex(
+      (item, idx) => idx > sessionState.currentTaskIndex && item.status !== 'completed' && item.status !== 'abandoned'
+    );
+    
+    // If no next item, try from beginning
+    const firstActiveIndex = nextActiveIndex >= 0 
+      ? nextActiveIndex 
+      : updatedItems.findIndex(item => item.status !== 'completed' && item.status !== 'abandoned');
+
+    // Reset task timer and move to next uncompleted item
     setSessionState(prev => ({
       ...prev,
       taskTime: 0,
-      currentTaskIndex: Math.min(prev.currentTaskIndex + 1, items.length - 1)
+      currentTaskIndex: firstActiveIndex >= 0 ? firstActiveIndex : prev.currentTaskIndex
     }));
+    
+    // Clear accumulated time for completed item
+    setItemSessionTimes(prev => {
+      const newTimes = { ...prev };
+      delete newTimes[currentItem.id];
+      return newTimes;
+    });
+  }, [items, sessionState.currentTaskIndex, sessionState.taskTime, sessionState.currentSessionNumber, saveItemTime]);
 
-    // Update local items with new time
+  // Abandon current task
+  const abandonCurrentTask = useCallback(async () => {
+    const currentItem = items[sessionState.currentTaskIndex];
+    if (!currentItem) return;
+
+    const timeSpentSeconds = sessionState.taskTime;
+
+    // Save time and mark as abandoned
+    await supabase
+      .from("campaign_items")
+      .update({ 
+        status: 'abandoned',
+        completed_session: sessionState.currentSessionNumber,
+        time_spent: (currentItem.time_spent || 0) + timeSpentSeconds
+      })
+      .eq("id", currentItem.id);
+
+    // Save time to source task/project
+    await saveItemTime(currentItem, timeSpentSeconds);
+
+    // Update local items
     setItems(prev => prev.map(item => 
       item.id === currentItem.id 
-        ? { ...item, completed: true, time_spent: (item.time_spent || 0) + timeSpentSeconds } 
+        ? { 
+            ...item, 
+            status: 'abandoned',
+            completed_session: sessionState.currentSessionNumber,
+            time_spent: (item.time_spent || 0) + timeSpentSeconds 
+          } 
         : item
     ));
-  }, [items, sessionState.currentTaskIndex, sessionState.taskTime]);
+
+    // Find next uncompleted item
+    const updatedItems = items.map(item => 
+      item.id === currentItem.id ? { ...item, status: 'abandoned' as const } : item
+    );
+    const nextActiveIndex = updatedItems.findIndex(
+      (item, idx) => idx > sessionState.currentTaskIndex && item.status !== 'completed' && item.status !== 'abandoned'
+    );
+    
+    const firstActiveIndex = nextActiveIndex >= 0 
+      ? nextActiveIndex 
+      : updatedItems.findIndex(item => item.status !== 'completed' && item.status !== 'abandoned');
+
+    setSessionState(prev => ({
+      ...prev,
+      taskTime: 0,
+      currentTaskIndex: firstActiveIndex >= 0 ? firstActiveIndex : prev.currentTaskIndex
+    }));
+    
+    setItemSessionTimes(prev => {
+      const newTimes = { ...prev };
+      delete newTimes[currentItem.id];
+      return newTimes;
+    });
+  }, [items, sessionState.currentTaskIndex, sessionState.taskTime, sessionState.currentSessionNumber, saveItemTime]);
+
+  // Update item time manually
+  const updateItemTimeManually = useCallback(async (itemId: string, newTimeMinutes: number) => {
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+
+    const newTimeSeconds = newTimeMinutes * 60;
+    const oldTimeSeconds = item.time_spent || 0;
+    const timeDiffMinutes = newTimeMinutes - Math.ceil(oldTimeSeconds / 60);
+
+    // Update campaign_item
+    await supabase
+      .from("campaign_items")
+      .update({ time_spent: newTimeSeconds })
+      .eq("id", itemId);
+
+    // Update source task/project with the difference
+    if (item.task_id && item.task) {
+      const currentTaskTime = item.task.time_logged || 0;
+      await supabase
+        .from("tasks")
+        .update({ time_logged: currentTaskTime + timeDiffMinutes })
+        .eq("id", item.task_id);
+    }
+
+    if (item.project_id && item.project) {
+      const currentProjectTime = item.project.time_spent || 0;
+      await supabase
+        .from("projects")
+        .update({ time_spent: currentProjectTime + timeDiffMinutes })
+        .eq("id", item.project_id);
+    }
+
+    // Update local state
+    setItems(prev => prev.map(i => 
+      i.id === itemId ? { ...i, time_spent: newTimeSeconds } : i
+    ));
+  }, [items]);
 
   // End session and save time to database
   const endSession = useCallback(async () => {
     pauseTimer();
     
-    if (!campaign) return;
+    if (!campaign) return 0;
+
+    // Save current task's time before ending
+    const currentItem = items[sessionState.currentTaskIndex];
+    if (currentItem && sessionState.taskTime > 0) {
+      await saveItemTime(currentItem, sessionState.taskTime);
+    }
 
     const sessionMinutes = Math.ceil(sessionState.sessionTime / 60);
     const newTotalTime = (campaign.time_spent || 0) + sessionMinutes;
+    const newSessionCount = (campaign.session_count || 0) + 1;
 
     const { error } = await supabase
       .from("campaigns")
-      .update({ time_spent: newTotalTime })
+      .update({ 
+        time_spent: newTotalTime,
+        session_count: newSessionCount
+      })
       .eq("id", campaign.id);
 
     if (error) {
@@ -146,7 +350,84 @@ export function useCampaignSession(campaign: Campaign | null) {
     }
 
     return sessionMinutes;
-  }, [campaign, sessionState.sessionTime, pauseTimer]);
+  }, [campaign, sessionState.sessionTime, sessionState.taskTime, sessionState.currentTaskIndex, items, pauseTimer, saveItemTime]);
+
+  // Start a new session without leaving the page
+  const startNewSession = useCallback(async () => {
+    pauseTimer();
+    
+    if (!campaign) return;
+
+    // Save current task's time if any
+    const currentItem = items[sessionState.currentTaskIndex];
+    if (currentItem && sessionState.taskTime > 0) {
+      await saveItemTime(currentItem, sessionState.taskTime);
+    }
+
+    // Save session time to campaign
+    const sessionMinutes = Math.ceil(sessionState.sessionTime / 60);
+    if (sessionMinutes > 0) {
+      const newTotalTime = (campaign.time_spent || 0) + sessionMinutes;
+      const newSessionCount = (campaign.session_count || 0) + 1;
+
+      await supabase
+        .from("campaigns")
+        .update({ 
+          time_spent: newTotalTime,
+          session_count: newSessionCount
+        })
+        .eq("id", campaign.id);
+
+      // Reset session state for new session
+      setSessionState(prev => ({
+        ...prev,
+        isRunning: false,
+        campaignTotalTime: newTotalTime,
+        sessionTime: 0,
+        taskTime: 0,
+        currentSessionNumber: newSessionCount + 1
+      }));
+    } else {
+      // Just increment session count
+      const newSessionCount = (campaign.session_count || 0) + 1;
+      await supabase
+        .from("campaigns")
+        .update({ session_count: newSessionCount })
+        .eq("id", campaign.id);
+
+      setSessionState(prev => ({
+        ...prev,
+        isRunning: false,
+        sessionTime: 0,
+        taskTime: 0,
+        currentSessionNumber: newSessionCount + 1
+      }));
+    }
+
+    // Clear session times
+    setItemSessionTimes({});
+    
+    // Refresh items to get updated data
+    await fetchItems();
+  }, [campaign, items, sessionState, pauseTimer, saveItemTime, fetchItems]);
+
+  // Uncheck/reset a completed item
+  const uncheckItem = useCallback(async (itemId: string) => {
+    await supabase
+      .from("campaign_items")
+      .update({ 
+        completed: false,
+        status: 'pending',
+        completed_session: null
+      })
+      .eq("id", itemId);
+
+    setItems(prev => prev.map(item => 
+      item.id === itemId 
+        ? { ...item, completed: false, status: 'pending', completed_session: null } 
+        : item
+    ));
+  }, []);
 
   // Reorder items
   const reorderItems = useCallback(async (newItems: CampaignItem[]) => {
@@ -164,7 +445,7 @@ export function useCampaignSession(campaign: Campaign | null) {
   }, []);
 
   // Add task to campaign
-  const addTaskToCampaign = useCallback(async (taskId: string) => {
+  const addTaskToCampaign = useCallback(async (taskId: string, parentItemId?: string) => {
     if (!campaign) return;
 
     const { data, error } = await supabase
@@ -172,7 +453,8 @@ export function useCampaignSession(campaign: Campaign | null) {
       .insert({
         campaign_id: campaign.id,
         task_id: taskId,
-        display_order: items.length
+        display_order: items.length,
+        parent_item_id: parentItemId || null
       })
       .select(`
         *,
@@ -229,14 +511,14 @@ export function useCampaignSession(campaign: Campaign | null) {
     return newItem;
   }, [campaign, items.length]);
 
-  // Set current task index
+  // Set current task index (only allow selecting non-completed items)
   const setCurrentTaskIndex = useCallback((index: number) => {
-    setSessionState(prev => ({
-      ...prev,
-      currentTaskIndex: index,
-      taskTime: 0
-    }));
-  }, []);
+    const targetItem = items[index];
+    if (targetItem && (targetItem.status === 'completed' || targetItem.status === 'abandoned')) {
+      return; // Can't select completed/abandoned items
+    }
+    switchToTask(index);
+  }, [items, switchToTask]);
 
   // Initialize
   useEffect(() => {
@@ -244,7 +526,8 @@ export function useCampaignSession(campaign: Campaign | null) {
       fetchItems();
       setSessionState(prev => ({
         ...prev,
-        campaignTotalTime: campaign.time_spent || 0
+        campaignTotalTime: campaign.time_spent || 0,
+        currentSessionNumber: (campaign.session_count || 0) + 1
       }));
     }
   }, [campaign, fetchItems]);
@@ -262,14 +545,19 @@ export function useCampaignSession(campaign: Campaign | null) {
     items,
     sessionState,
     loading,
+    itemSessionTimes,
     startTimer,
     pauseTimer,
     completeCurrentTask,
+    abandonCurrentTask,
     endSession,
+    startNewSession,
     reorderItems,
     addTaskToCampaign,
     addProjectToCampaign,
     setCurrentTaskIndex,
+    uncheckItem,
+    updateItemTimeManually,
     refreshItems: fetchItems
   };
 }

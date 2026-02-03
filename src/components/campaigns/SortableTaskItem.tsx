@@ -1,16 +1,50 @@
+import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, CheckCircle } from "lucide-react";
+import { GripVertical, CheckCircle, Ban, Clock, Edit2, X, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import type { CampaignItem } from "@/hooks/useCampaigns";
 
 interface SortableTaskItemProps {
   item: CampaignItem;
   isCurrentTask: boolean;
   onSelect: () => void;
+  onUncheck?: () => void;
+  onUpdateTime?: (minutes: number) => void;
+  sessionTimeSeconds?: number;
 }
 
-export function SortableTaskItem({ item, isCurrentTask, onSelect }: SortableTaskItemProps) {
+const formatTime = (seconds: number | null) => {
+  if (!seconds || seconds === 0) return "";
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins === 0) return `${secs}s`;
+  return `${mins}m ${secs}s`;
+};
+
+const formatTimeMinutes = (seconds: number | null) => {
+  if (!seconds || seconds === 0) return "—";
+  const mins = Math.ceil(seconds / 60);
+  const hours = Math.floor(mins / 60);
+  const remainingMins = mins % 60;
+  if (hours === 0) return `${remainingMins}m`;
+  if (remainingMins === 0) return `${hours}h`;
+  return `${hours}h ${remainingMins}m`;
+};
+
+export function SortableTaskItem({ 
+  item, 
+  isCurrentTask, 
+  onSelect, 
+  onUncheck,
+  onUpdateTime,
+  sessionTimeSeconds = 0
+}: SortableTaskItemProps) {
+  const [isEditingTime, setIsEditingTime] = useState(false);
+  const [editTimeValue, setEditTimeValue] = useState("");
+
   const {
     attributes,
     listeners,
@@ -27,20 +61,61 @@ export function SortableTaskItem({ item, isCurrentTask, onSelect }: SortableTask
 
   const title = item.task?.title || item.project?.name || "Unknown";
   const isTask = !!item.task_id;
+  const isCompleted = item.status === 'completed';
+  const isAbandoned = item.status === 'abandoned';
+  const totalTimeSpent = (item.time_spent || 0) + sessionTimeSeconds;
+
+  const handleTimeEditStart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const currentMinutes = Math.ceil((item.time_spent || 0) / 60);
+    setEditTimeValue(currentMinutes.toString());
+    setIsEditingTime(true);
+  };
+
+  const handleTimeEditSave = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newMinutes = parseInt(editTimeValue) || 0;
+    if (onUpdateTime) {
+      onUpdateTime(newMinutes);
+    }
+    setIsEditingTime(false);
+  };
+
+  const handleTimeEditCancel = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsEditingTime(false);
+  };
+
+  const handleUncheck = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onUncheck) {
+      onUncheck();
+    }
+  };
+
+  const handleClick = () => {
+    if (!isCompleted && !isAbandoned) {
+      onSelect();
+    }
+  };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-3 p-3 rounded-sm border transition-all cursor-pointer",
+        "flex items-center gap-3 p-3 rounded-sm border transition-all",
         isDragging && "opacity-50 z-50",
-        item.completed && "opacity-50 line-through",
+        (isCompleted || isAbandoned) && "opacity-60",
+        isCompleted && "bg-accent/10",
+        isAbandoned && "bg-destructive/10",
         isCurrentTask 
-          ? "border-primary bg-primary/20 ring-2 ring-primary/30" 
-          : "border-border/50 hover:border-border bg-card/50"
+          ? "border-primary bg-primary/20 ring-2 ring-primary/30 cursor-default" 
+          : (isCompleted || isAbandoned)
+            ? "border-border/30 cursor-default"
+            : "border-border/50 hover:border-border bg-card/50 cursor-pointer"
       )}
-      onClick={onSelect}
+      onClick={handleClick}
     >
       <button
         {...attributes}
@@ -55,15 +130,102 @@ export function SortableTaskItem({ item, isCurrentTask, onSelect }: SortableTask
         {isTask ? "⚒️" : "🗺️"}
       </span>
       
-      <span className="flex-1 font-crimson text-sm truncate">
+      <span className={cn(
+        "flex-1 font-crimson text-sm truncate",
+        isCompleted && "line-through",
+        isAbandoned && "line-through text-muted-foreground"
+      )}>
         {title}
       </span>
-      
-      {item.completed && (
-        <CheckCircle className="w-4 h-4 text-accent" />
+
+      {/* Time display/edit */}
+      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        {isEditingTime ? (
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              min={0}
+              value={editTimeValue}
+              onChange={(e) => setEditTimeValue(e.target.value)}
+              className="w-16 h-6 text-xs px-1"
+              autoFocus
+            />
+            <span className="text-xs text-muted-foreground">min</span>
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleTimeEditSave}>
+              <Check className="w-3 h-3 text-accent" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleTimeEditCancel}>
+              <X className="w-3 h-3 text-muted-foreground" />
+            </Button>
+          </div>
+        ) : (
+          <>
+            {totalTimeSpent > 0 && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {formatTimeMinutes(totalTimeSpent)}
+              </span>
+            )}
+            {onUpdateTime && !isCurrentTask && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6 opacity-50 hover:opacity-100"
+                onClick={handleTimeEditStart}
+              >
+                <Edit2 className="w-3 h-3" />
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Session time indicator for current task */}
+      {isCurrentTask && sessionTimeSeconds > 0 && (
+        <span className="text-xs text-primary font-mono">
+          +{formatTime(sessionTimeSeconds)}
+        </span>
       )}
       
-      {isCurrentTask && !item.completed && (
+      {isCompleted && (
+        <div className="flex items-center gap-1">
+          <CheckCircle className="w-4 h-4 text-accent" />
+          {item.completed_session && (
+            <span className="text-[10px] text-muted-foreground">S{item.completed_session}</span>
+          )}
+          {onUncheck && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-5 w-5 ml-1 opacity-50 hover:opacity-100"
+              onClick={handleUncheck}
+            >
+              <X className="w-3 h-3" />
+            </Button>
+          )}
+        </div>
+      )}
+
+      {isAbandoned && (
+        <div className="flex items-center gap-1">
+          <Ban className="w-4 h-4 text-destructive" />
+          {item.completed_session && (
+            <span className="text-[10px] text-muted-foreground">S{item.completed_session}</span>
+          )}
+          {onUncheck && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-5 w-5 ml-1 opacity-50 hover:opacity-100"
+              onClick={handleUncheck}
+            >
+              <X className="w-3 h-3" />
+            </Button>
+          )}
+        </div>
+      )}
+      
+      {isCurrentTask && !isCompleted && !isAbandoned && (
         <span className="text-xs text-primary font-cinzel tracking-wide">
           ACTIVE
         </span>
