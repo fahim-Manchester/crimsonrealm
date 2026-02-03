@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
-import { Plus, Sparkles, Map } from "lucide-react";
+import { Plus, Zap, Moon, X } from "lucide-react";
 import { z } from "zod";
 import type { Task, Project } from "@/hooks/useCampaigns";
 
@@ -24,6 +24,14 @@ const hiddenTerritorySchema = z.object({
   description: z.string().trim().max(500, "Description must be less than 500 characters").optional()
 });
 
+// Temporary item types for Quick Add
+export interface TemporaryItem {
+  id: string; // local UUID for tracking
+  type: "popup_quest" | "hidden_territory";
+  name: string;
+  description: string | null;
+}
+
 interface CampaignCreatorProps {
   tasks: Task[];
   projects: Project[];
@@ -32,13 +40,14 @@ interface CampaignCreatorProps {
     difficulty: string,
     plannedTime: number,
     taskIds: string[],
-    projectIds: string[]
+    projectIds: string[],
+    temporaryItems: TemporaryItem[]
   ) => Promise<void>;
   onClose: () => void;
   onRefreshData?: () => void;
 }
 
-export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, onRefreshData }: CampaignCreatorProps) {
+export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }: CampaignCreatorProps) {
   const { user } = useAuth();
   const [campaignName, setCampaignName] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
@@ -49,21 +58,17 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, o
   const [isGuessingDifficulty, setIsGuessingDifficulty] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
-  // Quick-add local tasks/projects (created during campaign creation)
-  const [localTasks, setLocalTasks] = useState<Task[]>([]);
-  const [localProjects, setLocalProjects] = useState<Project[]>([]);
+  // Temporary items (Pop-up Quests & Hidden Territories) - stored locally until campaign creation
+  const [temporaryItems, setTemporaryItems] = useState<TemporaryItem[]>([]);
   
   // Quick add form states
   const [questTitle, setQuestTitle] = useState("");
   const [questDescription, setQuestDescription] = useState("");
   const [territoryName, setTerritoryName] = useState("");
   const [territoryDescription, setTerritoryDescription] = useState("");
-  const [isCreatingQuest, setIsCreatingQuest] = useState(false);
-  const [isCreatingTerritory, setIsCreatingTerritory] = useState(false);
 
-  // Combined tasks and projects (existing + local)
-  const allTasks = [...tasks, ...localTasks];
-  const allProjects = [...projects, ...localProjects];
+  const popupQuests = temporaryItems.filter(i => i.type === "popup_quest");
+  const hiddenTerritories = temporaryItems.filter(i => i.type === "hidden_territory");
 
   const toggleTask = (taskId: string) => {
     setSelectedTasks(prev =>
@@ -81,9 +86,7 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, o
     );
   };
 
-  const handleCreateQuickTask = async () => {
-    if (!user) return;
-
+  const handleAddPopupQuest = () => {
     const validation = popupQuestSchema.safeParse({
       title: questTitle,
       description: questDescription
@@ -94,55 +97,20 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, o
       return;
     }
 
-    // Check for duplicate name in existing tasks
-    const existingTask = allTasks.find(
-      t => t.title.toLowerCase() === validation.data.title.toLowerCase()
-    );
-    let finalTitle = validation.data.title;
-    if (existingTask) {
-      let counter = 1;
-      while (allTasks.find(t => t.title.toLowerCase() === `${validation.data.title} #${counter}`.toLowerCase())) {
-        counter++;
-      }
-      finalTitle = `${validation.data.title} #${counter}`;
-    }
+    const newItem: TemporaryItem = {
+      id: crypto.randomUUID(),
+      type: "popup_quest",
+      name: validation.data.title,
+      description: validation.data.description || null
+    };
 
-    setIsCreatingQuest(true);
-    try {
-      const { data: newTask, error } = await supabase
-        .from("tasks")
-        .insert({
-          user_id: user.id,
-          title: finalTitle,
-          description: validation.data.description || null,
-          status: "pending",
-          priority: "medium"
-        })
-        .select("id, title, description, status, priority, time_logged")
-        .single();
-
-      if (error) throw error;
-
-      // Add to local tasks and auto-select
-      setLocalTasks(prev => [...prev, newTask]);
-      setSelectedTasks(prev => [...prev, newTask.id]);
-      
-      toast.success("⚡ Quick task added!");
-      setQuestTitle("");
-      setQuestDescription("");
-      
-      if (onRefreshData) onRefreshData();
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to create quick task");
-    } finally {
-      setIsCreatingQuest(false);
-    }
+    setTemporaryItems(prev => [...prev, newItem]);
+    toast.success("⚡ Pop-up Quest added!");
+    setQuestTitle("");
+    setQuestDescription("");
   };
 
-  const handleCreateQuickTerritory = async () => {
-    if (!user) return;
-
+  const handleAddHiddenTerritory = () => {
     const validation = hiddenTerritorySchema.safeParse({
       name: territoryName,
       description: territoryDescription
@@ -153,71 +121,44 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, o
       return;
     }
 
-    // Check for duplicate name in existing projects
-    const existingProject = allProjects.find(
-      p => p.name.toLowerCase() === validation.data.name.toLowerCase()
-    );
-    let finalName = validation.data.name;
-    if (existingProject) {
-      let counter = 1;
-      while (allProjects.find(p => p.name.toLowerCase() === `${validation.data.name} #${counter}`.toLowerCase())) {
-        counter++;
-      }
-      finalName = `${validation.data.name} #${counter}`;
-    }
+    const newItem: TemporaryItem = {
+      id: crypto.randomUUID(),
+      type: "hidden_territory",
+      name: validation.data.name,
+      description: validation.data.description || null
+    };
 
-    setIsCreatingTerritory(true);
-    try {
-      const { data: newProject, error } = await supabase
-        .from("projects")
-        .insert({
-          user_id: user.id,
-          name: finalName,
-          description: validation.data.description || null,
-          status: "active"
-        })
-        .select("id, name, description, status, time_spent")
-        .single();
+    setTemporaryItems(prev => [...prev, newItem]);
+    toast.success("🌙 Hidden Territory added!");
+    setTerritoryName("");
+    setTerritoryDescription("");
+  };
 
-      if (error) throw error;
-
-      // Add to local projects and auto-select
-      setLocalProjects(prev => [...prev, newProject]);
-      setSelectedProjects(prev => [...prev, newProject.id]);
-      
-      toast.success("🗺️ Quick territory added!");
-      setTerritoryName("");
-      setTerritoryDescription("");
-      
-      if (onRefreshData) onRefreshData();
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to create quick territory");
-    } finally {
-      setIsCreatingTerritory(false);
-    }
+  const removeTemporaryItem = (id: string) => {
+    setTemporaryItems(prev => prev.filter(i => i.id !== id));
   };
 
   const generateCampaignName = async () => {
-    if (selectedTasks.length === 0 && selectedProjects.length === 0) {
-      toast.error("Select some tasks or territories first");
+    if (selectedTasks.length === 0 && selectedProjects.length === 0 && temporaryItems.length === 0) {
+      toast.error("Select some tasks, territories, or add quick items first");
       return;
     }
 
     setIsGeneratingName(true);
     try {
-      const selectedTaskNames = allTasks
+      const selectedTaskNames = tasks
         .filter(t => selectedTasks.includes(t.id))
         .map(t => t.title);
-      const selectedProjectNames = allProjects
+      const selectedProjectNames = projects
         .filter(p => selectedProjects.includes(p.id))
         .map(p => p.name);
+      const tempItemNames = temporaryItems.map(i => i.name);
 
       const { data, error } = await supabase.functions.invoke("campaign-ai", {
         body: {
           action: "generate_name",
-          tasks: selectedTaskNames,
-          projects: selectedProjectNames
+          tasks: [...selectedTaskNames, ...tempItemNames.filter((_, i) => temporaryItems[i].type === "popup_quest")],
+          projects: [...selectedProjectNames, ...tempItemNames.filter((_, i) => temporaryItems[i].type === "hidden_territory")]
         }
       });
 
@@ -234,21 +175,22 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, o
   };
 
   const guessDifficulty = async () => {
-    if (selectedTasks.length === 0 && selectedProjects.length === 0) {
-      toast.error("Select some tasks or territories first");
+    if (selectedTasks.length === 0 && selectedProjects.length === 0 && temporaryItems.length === 0) {
+      toast.error("Select some tasks, territories, or add quick items first");
       return;
     }
 
     setIsGuessingDifficulty(true);
     try {
-      const selectedTaskData = allTasks.filter(t => selectedTasks.includes(t.id));
-      const selectedProjectData = allProjects.filter(p => selectedProjects.includes(p.id));
+      const selectedTaskData = tasks.filter(t => selectedTasks.includes(t.id));
+      const selectedProjectData = projects.filter(p => selectedProjects.includes(p.id));
 
       const { data, error } = await supabase.functions.invoke("campaign-ai", {
         body: {
           action: "guess_difficulty",
           tasks: selectedTaskData,
-          projects: selectedProjectData
+          projects: selectedProjectData,
+          temporaryItems: temporaryItems
         }
       });
 
@@ -274,8 +216,8 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, o
       return;
     }
 
-    if (selectedTasks.length === 0 && selectedProjects.length === 0) {
-      toast.error("Select at least one task or territory");
+    if (selectedTasks.length === 0 && selectedProjects.length === 0 && temporaryItems.length === 0) {
+      toast.error("Select at least one task, territory, or add a quick item");
       return;
     }
 
@@ -286,7 +228,8 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, o
         difficulty,
         plannedHours * 60, // Convert to minutes
         selectedTasks,
-        selectedProjects
+        selectedProjects,
+        temporaryItems
       );
       onClose();
     } catch (error) {
@@ -295,6 +238,8 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, o
       setIsCreating(false);
     }
   };
+
+  const totalItemCount = selectedTasks.length + selectedProjects.length + temporaryItems.length;
 
   return (
     <div className="space-y-6">
@@ -376,18 +321,19 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, o
           <TabsTrigger value="territories" className="font-cinzel text-xs">
             Territories ({selectedProjects.length})
           </TabsTrigger>
-          <TabsTrigger value="quick" className="font-cinzel text-xs">
-            ⚡ Quick Add
+          <TabsTrigger value="quick" className="font-cinzel text-xs flex items-center gap-1">
+            <Zap className="w-3 h-3" />
+            Quick Add ({temporaryItems.length})
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="tasks" className="mt-4 max-h-48 overflow-y-auto space-y-2">
-          {allTasks.length === 0 ? (
+          {tasks.length === 0 ? (
             <p className="text-muted-foreground text-sm text-center py-4">
               No uncompleted tasks in the Forge
             </p>
           ) : (
-            allTasks.map(task => (
+            tasks.map(task => (
               <div
                 key={task.id}
                 className={`flex items-center gap-3 p-3 rounded-sm border transition-colors cursor-pointer ${
@@ -418,12 +364,12 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, o
         </TabsContent>
 
         <TabsContent value="territories" className="mt-4 max-h-48 overflow-y-auto space-y-2">
-          {allProjects.length === 0 ? (
+          {projects.length === 0 ? (
             <p className="text-muted-foreground text-sm text-center py-4">
               No unconquered territories
             </p>
           ) : (
-            allProjects.map(project => (
+            projects.map(project => (
               <div
                 key={project.id}
                 className={`flex items-center gap-3 p-3 rounded-sm border transition-colors cursor-pointer ${
@@ -450,70 +396,106 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, o
           )}
         </TabsContent>
 
-        {/* Quick Add Tab */}
+        {/* Quick Add Tab - Pop-up Quests & Hidden Territories */}
         <TabsContent value="quick" className="mt-4 space-y-4">
-          {/* Quick Task */}
-          <div className="p-3 rounded-sm border border-border/50 space-y-2">
+          {/* Pop-up Quest Section */}
+          <div className="p-3 rounded-sm border border-amber-500/30 bg-amber-500/5 space-y-2">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" />
-              <span className="font-cinzel text-xs tracking-wide">Quick Task</span>
+              <Zap className="w-4 h-4 text-amber-500" />
+              <span className="font-cinzel text-xs tracking-wide text-amber-500">Pop-up Quest</span>
+              <span className="text-xs text-muted-foreground">(temporary)</span>
             </div>
             <Input
               value={questTitle}
               onChange={(e) => setQuestTitle(e.target.value)}
               placeholder="Task name..."
-              className="gothic-input"
+              className="gothic-input border-amber-500/30 focus:border-amber-500"
               maxLength={200}
             />
             <Textarea
               value={questDescription}
               onChange={(e) => setQuestDescription(e.target.value)}
               placeholder="Optional details..."
-              className="gothic-input min-h-[50px] resize-none text-sm"
+              className="gothic-input min-h-[50px] resize-none text-sm border-amber-500/30 focus:border-amber-500"
               maxLength={500}
             />
             <Button
-              onClick={handleCreateQuickTask}
-              disabled={!questTitle.trim() || isCreatingQuest}
-              className="w-full gothic-button-primary"
+              onClick={handleAddPopupQuest}
+              disabled={!questTitle.trim()}
+              className="w-full bg-amber-600 hover:bg-amber-700 text-white"
               size="sm"
             >
               <Plus className="w-3 h-3 mr-1" />
-              {isCreatingQuest ? "Adding..." : "Add Task"}
+              Add Task
             </Button>
           </div>
 
-          {/* Quick Territory */}
-          <div className="p-3 rounded-sm border border-border/50 space-y-2">
+          {/* Hidden Territory Section */}
+          <div className="p-3 rounded-sm border border-purple-500/30 bg-purple-500/5 space-y-2">
             <div className="flex items-center gap-2">
-              <Map className="w-4 h-4 text-accent" />
-              <span className="font-cinzel text-xs tracking-wide">Quick Territory</span>
+              <Moon className="w-4 h-4 text-purple-500" />
+              <span className="font-cinzel text-xs tracking-wide text-purple-500">Hidden Territory</span>
+              <span className="text-xs text-muted-foreground">(temporary)</span>
             </div>
             <Input
               value={territoryName}
               onChange={(e) => setTerritoryName(e.target.value)}
               placeholder="Territory name..."
-              className="gothic-input"
+              className="gothic-input border-purple-500/30 focus:border-purple-500"
               maxLength={200}
             />
             <Textarea
               value={territoryDescription}
               onChange={(e) => setTerritoryDescription(e.target.value)}
               placeholder="Optional details..."
-              className="gothic-input min-h-[50px] resize-none text-sm"
+              className="gothic-input min-h-[50px] resize-none text-sm border-purple-500/30 focus:border-purple-500"
               maxLength={500}
             />
             <Button
-              onClick={handleCreateQuickTerritory}
-              disabled={!territoryName.trim() || isCreatingTerritory}
-              variant="outline"
-              className="w-full border-accent/50 hover:bg-accent/10"
+              onClick={handleAddHiddenTerritory}
+              disabled={!territoryName.trim()}
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white"
               size="sm"
             >
               <Plus className="w-3 h-3 mr-1" />
-              {isCreatingTerritory ? "Adding..." : "Add Territory"}
+              Add Territory
             </Button>
           </div>
+
+          {/* Pending Items List */}
+          {temporaryItems.length > 0 && (
+            <div className="border-t border-border/30 pt-3 space-y-2">
+              <span className="font-cinzel text-xs tracking-wide text-muted-foreground">
+                Pending Items ({temporaryItems.length})
+              </span>
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {popupQuests.map(item => (
+                  <div key={item.id} className="flex items-center gap-2 p-2 rounded-sm bg-amber-500/10 border border-amber-500/30">
+                    <Zap className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                    <span className="font-crimson text-xs flex-1 truncate">{item.name}</span>
+                    <button
+                      onClick={() => removeTemporaryItem(item.id)}
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                {hiddenTerritories.map(item => (
+                  <div key={item.id} className="flex items-center gap-2 p-2 rounded-sm bg-purple-500/10 border border-purple-500/30">
+                    <Moon className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                    <span className="font-crimson text-xs flex-1 truncate">{item.name}</span>
+                    <button
+                      onClick={() => removeTemporaryItem(item.id)}
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -528,10 +510,10 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, o
         </Button>
         <Button
           onClick={handleCreate}
-          disabled={isCreating}
+          disabled={isCreating || totalItemCount === 0}
           className="flex-1 gothic-button-primary py-2"
         >
-          {isCreating ? "Forging..." : "⚔️ Forge Campaign"}
+          {isCreating ? "Forging..." : `⚔️ Forge Campaign (${totalItemCount})`}
         </Button>
       </div>
     </div>

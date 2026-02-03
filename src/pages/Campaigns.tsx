@@ -67,9 +67,10 @@ const Campaigns = () => {
     difficulty: string,
     plannedTime: number,
     taskIds: string[],
-    projectIds: string[]
+    projectIds: string[],
+    temporaryItems: { id: string; type: "popup_quest" | "hidden_territory"; name: string; description: string | null }[]
   ) => {
-    await createCampaign(name, difficulty, plannedTime, taskIds, projectIds);
+    await createCampaign(name, difficulty, plannedTime, taskIds, projectIds, temporaryItems);
   };
 
   const handleStartCampaign = (campaignId: string) => {
