@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -242,7 +243,8 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
   const totalItemCount = selectedTasks.length + selectedProjects.length + temporaryItems.length;
 
   return (
-    <div className="space-y-6">
+    <ScrollArea className="max-h-[70vh] pr-4">
+      <div className="space-y-6 pb-2">
       {/* Campaign Name */}
       <div className="space-y-2">
         <Label className="font-cinzel text-sm tracking-wide">Campaign Name</Label>
@@ -516,6 +518,7 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
           {isCreating ? "Forging..." : `⚔️ Forge Campaign (${totalItemCount})`}
         </Button>
       </div>
-    </div>
+      </div>
+    </ScrollArea>
   );
 }
