@@ -55,10 +55,14 @@ export function useCleaveDismantle<T extends { id: string }>(
     setCleaving(true);
     try {
       const { data, error } = await supabase.functions.invoke("cleave", {
-        body: { entries, section, numGroups, luckyMode },
+        body: { entries, section, numGroups, luckyMode, userId },
       });
 
       if (error) throw error;
+      if (data?.code === "DAILY_LIMIT_EXCEEDED") {
+        toast.error(data.error || "Daily AI limit reached. Resets at midnight UTC.");
+        return;
+      }
       if (data?.error) {
         toast.error(data.error);
         return;
