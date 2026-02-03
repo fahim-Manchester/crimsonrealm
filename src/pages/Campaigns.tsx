@@ -1,12 +1,14 @@
 import { useState, useCallback } from "react";
 import { Link } from "react-router-dom";
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { ArrowLeft, Plus, Swords, Flame, Archive, RotateCcw, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCampaigns, Campaign } from "@/hooks/useCampaigns";
 import { CampaignCreator } from "@/components/campaigns/CampaignCreator";
 import { CampaignCard } from "@/components/campaigns/CampaignCard";
-import { CampaignSectionHeader } from "@/components/campaigns/CampaignSectionHeader";
+import { DraggableCampaignCard } from "@/components/campaigns/DraggableCampaignCard";
+import { DroppableCampaignSection } from "@/components/campaigns/DroppableCampaignSection";
 import { EditCampaignDialog } from "@/components/campaigns/EditCampaignDialog";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { useAuth } from "@/hooks/useAuth";
@@ -32,6 +34,7 @@ const Campaigns = () => {
   const [showCreator, setShowCreator] = useState(false);
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
+  const [draggingCampaign, setDraggingCampaign] = useState<Campaign | null>(null);
   
   // Section expansion states
   const [expandedSections, setExpandedSections] = useState({
@@ -40,6 +43,15 @@ const Campaigns = () => {
     routine: true,
     completed: false
   });
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px movement before dragging starts
+      },
+    })
+  );
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -90,10 +102,6 @@ const Campaigns = () => {
     await updateCampaign(campaignId, updates);
   };
 
-  const handleMoveToStatus = async (campaignId: string, newStatus: string) => {
-    await updateCampaignStatus(campaignId, newStatus);
-  };
-
   const handleResetRoutine = async (campaignId: string) => {
     await resetRoutineCampaign(campaignId);
   };
@@ -106,6 +114,31 @@ const Campaigns = () => {
     }
   }, [updateCampaignTimeSpent]);
 
+  // DnD handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    const campaign = campaigns.find(c => c.id === event.active.id);
+    if (campaign) {
+      setDraggingCampaign(campaign);
+    }
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setDraggingCampaign(null);
+    
+    const { active, over } = event;
+    if (!over) return;
+
+    const campaignId = active.id as string;
+    const newStatus = over.id as string;
+    const campaign = campaigns.find(c => c.id === campaignId);
+    
+    if (!campaign || campaign.status === newStatus) return;
+
+    // Don't allow moving completed campaigns (they should stay completed)
+    // But allow moving TO completed
+    await updateCampaignStatus(campaignId, newStatus);
+  };
+
   if (authLoading || loading) return <LoadingSpinner />;
 
   // Group campaigns by status
@@ -115,9 +148,9 @@ const Campaigns = () => {
   const completedCampaigns = campaigns.filter(c => c.status === "completed");
 
   const renderCampaignGrid = (campaignList: Campaign[], showReset: boolean = false) => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-3">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {campaignList.map(campaign => (
-        <CampaignCard
+        <DraggableCampaignCard
           key={campaign.id}
           campaign={campaign}
           onStart={handleStartCampaign}
@@ -172,7 +205,7 @@ const Campaigns = () => {
             </h2>
             <p className="font-crimson text-muted-foreground max-w-xl mx-auto">
               Combine tasks from the Forge and territories to conquer into epic campaigns. 
-              Track your progress and claim victory.
+              Drag campaigns between sections to organize your quests.
             </p>
           </div>
 
@@ -187,79 +220,86 @@ const Campaigns = () => {
             </Button>
           </div>
 
-          {/* Campaign Sections */}
-          <div className="space-y-4">
-            {/* Active Campaigns */}
-            <section>
-              <CampaignSectionHeader
+          {/* Campaign Sections with DnD */}
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="space-y-4">
+              {/* Active Campaigns */}
+              <DroppableCampaignSection
+                id="active"
                 title="Active Campaigns"
                 count={activeCampaigns.length}
                 isExpanded={expandedSections.active}
                 onToggle={() => toggleSection("active")}
                 icon={<Flame className="w-4 h-4" />}
-              />
-              {expandedSections.active && activeCampaigns.length > 0 && renderCampaignGrid(activeCampaigns)}
-              {expandedSections.active && activeCampaigns.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4 font-crimson">
-                  No active campaigns. Create one to begin your quest!
-                </p>
-              )}
-            </section>
+                emptyMessage="No active campaigns. Create one or drag here to activate!"
+              >
+                {renderCampaignGrid(activeCampaigns)}
+              </DroppableCampaignSection>
 
-            {/* Routine Campaigns */}
-            <section>
-              <CampaignSectionHeader
+              {/* Routine Campaigns */}
+              <DroppableCampaignSection
+                id="routine"
                 title="Routine"
                 count={routineCampaigns.length}
                 isExpanded={expandedSections.routine}
                 onToggle={() => toggleSection("routine")}
                 icon={<RotateCcw className="w-4 h-4" />}
                 className="border-accent/30"
-              />
-              {expandedSections.routine && routineCampaigns.length > 0 && renderCampaignGrid(routineCampaigns, true)}
-              {expandedSections.routine && routineCampaigns.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4 font-crimson">
-                  Drag campaigns here for repeatable routines like morning rituals.
-                </p>
-              )}
-            </section>
+                emptyMessage="Drag campaigns here for repeatable routines like morning rituals."
+              >
+                {renderCampaignGrid(routineCampaigns, true)}
+              </DroppableCampaignSection>
 
-            {/* Archived Campaigns */}
-            <section>
-              <CampaignSectionHeader
+              {/* Archived Campaigns */}
+              <DroppableCampaignSection
+                id="archived"
                 title="Archived"
                 count={archivedCampaigns.length}
                 isExpanded={expandedSections.archived}
                 onToggle={() => toggleSection("archived")}
                 icon={<Archive className="w-4 h-4" />}
                 className="border-muted-foreground/30"
-              />
-              {expandedSections.archived && archivedCampaigns.length > 0 && renderCampaignGrid(archivedCampaigns)}
-              {expandedSections.archived && archivedCampaigns.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4 font-crimson">
-                  No archived campaigns.
-                </p>
-              )}
-            </section>
+                emptyMessage="Drag campaigns here to archive them for later."
+              >
+                {renderCampaignGrid(archivedCampaigns)}
+              </DroppableCampaignSection>
 
-            {/* Completed Campaigns */}
-            <section>
-              <CampaignSectionHeader
+              {/* Completed Campaigns */}
+              <DroppableCampaignSection
+                id="completed"
                 title="Completed"
                 count={completedCampaigns.length}
                 isExpanded={expandedSections.completed}
                 onToggle={() => toggleSection("completed")}
                 icon={<Trophy className="w-4 h-4" />}
                 className="border-accent/30"
-              />
-              {expandedSections.completed && completedCampaigns.length > 0 && renderCampaignGrid(completedCampaigns)}
-              {expandedSections.completed && completedCampaigns.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4 font-crimson">
-                  No completed campaigns yet. Finish your quests to see them here!
-                </p>
+                emptyMessage="No completed campaigns yet. Finish your quests to see them here!"
+              >
+                {renderCampaignGrid(completedCampaigns)}
+              </DroppableCampaignSection>
+            </div>
+
+            {/* Drag Overlay */}
+            <DragOverlay>
+              {draggingCampaign && (
+                <div className="opacity-90 rotate-2 scale-105">
+                  <CampaignCard
+                    campaign={draggingCampaign}
+                    onStart={() => {}}
+                    onDelete={() => {}}
+                    onComplete={() => {}}
+                    onEdit={() => {}}
+                    fetchItems={async () => []}
+                    isActive={false}
+                  />
+                </div>
               )}
-            </section>
-          </div>
+            </DragOverlay>
+          </DndContext>
 
           {/* Empty State - only show if no campaigns at all */}
           {campaigns.length === 0 && (
