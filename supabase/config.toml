@@ -1,1 +1,7 @@
 project_id = "iizypnjyjoprpapvnqqp"
+
+[functions.cleave]
+verify_jwt = false
+
+[functions.campaign-ai]
+verify_jwt = false
