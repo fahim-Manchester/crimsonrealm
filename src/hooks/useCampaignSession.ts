@@ -97,13 +97,20 @@ export function useCampaignSession(campaign: Campaign | null) {
       }));
       setItems(mappedItems);
       
+      // Calculate campaign total from all item times (more accurate than campaign.time_spent)
+      const totalSeconds = mappedItems.reduce((sum, item) => sum + (item.time_spent || 0), 0);
+      const totalMinutes = Math.ceil(totalSeconds / 60);
+      
       // Find first non-completed item as initial index
       const firstActiveIndex = mappedItems.findIndex(
         item => item.status !== 'completed' && item.status !== 'abandoned'
       );
-      if (firstActiveIndex >= 0) {
-        setSessionState(prev => ({ ...prev, currentTaskIndex: firstActiveIndex }));
-      }
+      
+      setSessionState(prev => ({ 
+        ...prev, 
+        currentTaskIndex: firstActiveIndex >= 0 ? firstActiveIndex : prev.currentTaskIndex,
+        campaignTotalTime: totalMinutes
+      }));
     }
     setLoading(false);
   }, [campaign]);
@@ -400,6 +407,14 @@ export function useCampaignSession(campaign: Campaign | null) {
     });
   }, [items]);
 
+  // Calculate total campaign time from all item times
+  const calculateTotalFromItems = useCallback((itemsList: CampaignItem[], currentTaskTimeSeconds: number = 0) => {
+    // Sum all item time_spent (in seconds), convert to minutes
+    const totalSeconds = itemsList.reduce((sum, item) => sum + (item.time_spent || 0), 0);
+    // Add any unsaved current task time
+    return Math.ceil((totalSeconds + currentTaskTimeSeconds) / 60);
+  }, []);
+
   // End session and save time to database
   const endSession = useCallback(async () => {
     pauseTimer();
@@ -412,8 +427,16 @@ export function useCampaignSession(campaign: Campaign | null) {
       await saveItemTime(currentItem, sessionState.taskTime);
     }
 
-    const sessionMinutes = Math.ceil(sessionState.sessionTime / 60);
-    const newTotalTime = (campaign.time_spent || 0) + sessionMinutes;
+    // Recalculate total from all items (including the just-saved current task time)
+    const updatedItems = currentItem && sessionState.taskTime > 0
+      ? items.map(item => 
+          item.id === currentItem.id 
+            ? { ...item, time_spent: (item.time_spent || 0) + sessionState.taskTime }
+            : item
+        )
+      : items;
+    
+    const newTotalTime = calculateTotalFromItems(updatedItems, 0);
     const newSessionCount = (campaign.session_count || 0) + 1;
 
     const { error } = await supabase
@@ -428,8 +451,8 @@ export function useCampaignSession(campaign: Campaign | null) {
       console.error("Failed to save session time:", error);
     }
 
-    return sessionMinutes;
-  }, [campaign, sessionState.sessionTime, sessionState.taskTime, sessionState.currentTaskIndex, items, pauseTimer, saveItemTime]);
+    return Math.ceil(sessionState.sessionTime / 60);
+  }, [campaign, sessionState.sessionTime, sessionState.taskTime, sessionState.currentTaskIndex, items, pauseTimer, saveItemTime, calculateTotalFromItems]);
 
   // Start a new session without leaving the page
   const startNewSession = useCallback(async () => {
@@ -443,45 +466,35 @@ export function useCampaignSession(campaign: Campaign | null) {
       await saveItemTime(currentItem, sessionState.taskTime);
     }
 
-    // Save session time to campaign
-    const sessionMinutes = Math.ceil(sessionState.sessionTime / 60);
-    if (sessionMinutes > 0) {
-      const newTotalTime = (campaign.time_spent || 0) + sessionMinutes;
-      const newSessionCount = (campaign.session_count || 0) + 1;
+    // Recalculate total from all items
+    const updatedItems = currentItem && sessionState.taskTime > 0
+      ? items.map(item => 
+          item.id === currentItem.id 
+            ? { ...item, time_spent: (item.time_spent || 0) + sessionState.taskTime }
+            : item
+        )
+      : items;
+    
+    const newTotalTime = calculateTotalFromItems(updatedItems, 0);
+    const newSessionCount = (campaign.session_count || 0) + 1;
 
-      await supabase
-        .from("campaigns")
-        .update({ 
-          time_spent: newTotalTime,
-          session_count: newSessionCount
-        })
-        .eq("id", campaign.id);
+    await supabase
+      .from("campaigns")
+      .update({ 
+        time_spent: newTotalTime,
+        session_count: newSessionCount
+      })
+      .eq("id", campaign.id);
 
-      // Reset session state for new session
-      setSessionState(prev => ({
-        ...prev,
-        isRunning: false,
-        campaignTotalTime: newTotalTime,
-        sessionTime: 0,
-        taskTime: 0,
-        currentSessionNumber: newSessionCount + 1
-      }));
-    } else {
-      // Just increment session count
-      const newSessionCount = (campaign.session_count || 0) + 1;
-      await supabase
-        .from("campaigns")
-        .update({ session_count: newSessionCount })
-        .eq("id", campaign.id);
-
-      setSessionState(prev => ({
-        ...prev,
-        isRunning: false,
-        sessionTime: 0,
-        taskTime: 0,
-        currentSessionNumber: newSessionCount + 1
-      }));
-    }
+    // Reset session state for new session
+    setSessionState(prev => ({
+      ...prev,
+      isRunning: false,
+      campaignTotalTime: newTotalTime,
+      sessionTime: 0,
+      taskTime: 0,
+      currentSessionNumber: newSessionCount + 1
+    }));
 
     // Clear session times
     setItemSessionTimes({});
