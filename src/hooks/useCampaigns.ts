@@ -191,7 +191,8 @@ export function useCampaigns() {
     difficulty: string,
     plannedTime: number,
     taskIds: string[],
-    projectIds: string[]
+    projectIds: string[],
+    temporaryItems: { id: string; type: "popup_quest" | "hidden_territory"; name: string; description: string | null }[] = []
   ) => {
     if (!user) return null;
 
@@ -227,7 +228,17 @@ export function useCampaigns() {
       display_order: taskIds.length + index
     }));
 
-    const allItems = [...taskItems, ...projectItems];
+    // Add temporary items (Pop-up Quests and Hidden Territories)
+    const tempItems = temporaryItems.map((item, index) => ({
+      campaign_id: campaign.id,
+      is_temporary: true,
+      temporary_type: item.type,
+      temporary_name: item.name,
+      temporary_description: item.description,
+      display_order: taskIds.length + projectIds.length + index
+    }));
+
+    const allItems = [...taskItems, ...projectItems, ...tempItems];
 
     if (allItems.length > 0) {
       const { error: itemsError } = await supabase
