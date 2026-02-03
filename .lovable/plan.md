@@ -1,139 +1,138 @@
 
-# Fix Campaign Session Features
+# Fix Drag-and-Drop: Embedding & Reordering
 
-## Summary of Issues Identified
+## Problem Analysis
 
-After reviewing the code, I found several problems with the current implementation:
+After reviewing the code, I found several issues causing both embedding and reordering to fail:
 
-### 1. Quick-Add Saves to Main Database (Wrong)
-Currently, `CampaignCreator.tsx` (lines 112-141) and `AddItemDialog.tsx` (lines 147-173) insert directly into the `tasks` and `projects` tables when using quick-add. This is incorrect - quick-added items should only exist in `campaign_items` until the user explicitly chooses to make them permanent.
+### Issue 1: Nest Drop Zone Has `pointer-events-none`
+In `SortableTaskItem.tsx` (line 144), the nest drop zone has `pointer-events-none`, which prevents it from ever receiving any drop events. This completely breaks the embedding feature.
 
-### 2. Same Task/Territory Can't Be Added to Multiple Campaigns
-The `AddItemDialog.tsx` (lines 68-69, 80-81) filters out tasks and projects that already exist in any campaign_items - but they should only be filtered within the same campaign.
+### Issue 2: Collision Detection Confusion
+The current approach uses separate drop zones for nesting (`nest:{itemId}`) and sortable reordering (item's `id`). But with `pointer-events-none` on the nest zone, all drops go to the sortable layer, and the `handleDragEnd` only sees the sortable item IDs, never the nest IDs.
 
-### 3. Tasks Can't Be Embedded Under Territories
-While `parent_item_id` exists in the schema, there's no UI to drag tasks under territories, no visual indentation, and no aggregated time calculation for territories.
+### Issue 3: Indentation Not Reflecting Actual Data
+The `getIndentLevel` function works correctly, but if `parent_item_id` isn't being set properly in the database during nesting, the indentation won't show.
 
-### 4. Territories Don't Look Distinct
-The `SortableTaskItem.tsx` shows the same styling for tasks and territories, just with different icons.
+---
 
-### 5. Time Not Being Properly Aggregated
-When tasks are embedded under a territory, the territory's time should be the sum of all embedded items.
+## Solution: Use Drop Position to Determine Intent
+
+Instead of separate overlay drop zones, use a simpler approach based on **where on the target item the user drops**:
+- **Drop on left/center portion** → Reorder (same level)
+- **Drop on right portion** (or hold briefly) → Nest under target
+
+However, for simplicity and reliability, I'll implement a different approach using explicit "drop to nest" zones that actually work:
+
+### Approach: Overlay Drop Zone with Proper Pointer Events
+
+1. **Remove `pointer-events-none`** from the nest drop zone
+2. **Make the nest zone smaller** (e.g., right 25% of the row) so most of the row area is for reordering
+3. **Show visual feedback** when hovering over the nest zone
 
 ---
 
 ## Implementation Plan
 
-### Phase 1: Database Schema Update
-Add new columns to track quick-add items vs permanent items:
+### Step 1: Fix `SortableTaskItem.tsx` - Make Nest Zone Interactive
 
-- **campaign_items table**: Add `is_temporary` (boolean, default false) and `display_name` (text, nullable) columns
-  - `is_temporary = true` means it was quick-added and hasn't been saved to main tables
-  - `display_name` stores the name when there's no linked task/project
+**Current code (broken):**
+```tsx
+<div
+  ref={setNestRef}
+  className={cn(
+    "absolute inset-0 rounded-sm pointer-events-none", // <-- Problem!
+    isNestOver && "ring-2 ring-accent/40"
+  )}
+/>
+```
 
-### Phase 2: Fix Quick-Add to NOT Save to Main Tables
+**Fixed code:**
+```tsx
+<div
+  ref={setNestRef}
+  className={cn(
+    "absolute right-0 top-0 bottom-0 w-1/4 rounded-r-sm z-10",
+    isNestOver && "bg-accent/20 ring-2 ring-accent/40"
+  )}
+/>
+```
 
-**Files**: `AddItemDialog.tsx`, `CampaignCreator.tsx`
+This creates a visible "nest zone" on the right 25% of each item that users can drop onto.
 
-Changes:
-1. Instead of inserting into `tasks`/`projects` tables, insert into `campaign_items` with:
-   - `is_temporary = true`
-   - `display_name = user's entered name`
-   - `task_id = null` and `project_id = null`
-2. Add a new column to distinguish whether the item is a task-type or project-type: store this as metadata (e.g., `item_type: 'task' | 'project'`)
+### Step 2: Update `QuestItemList.tsx` - Add Visual Feedback During Drag
 
-### Phase 3: Add "Make Permanent" Button
+Add a visual indicator when dragging to show where the nest zone is:
+- When an item is being dragged, show a subtle indicator on potential parent items
+- Use `useDndMonitor` to track drag state
 
-**Files**: `SortableTaskItem.tsx`, `useCampaignSession.ts`
+### Step 3: Add "Unembed" Button to Nested Items
 
-Add a toggle/button for temporary items to make them permanent:
-1. Show a save icon next to temporary items
-2. When clicked, create the actual task/project in the main database
-3. Update the `campaign_item` to reference the new record and set `is_temporary = false`
-4. Handle duplicate name detection (append "#1", "#2", etc.)
+Since the user chose "reorder within same level", add a small button to unembed items instead of relying only on drag:
+- Show a small "↰" or unembed icon on nested items
+- Clicking it calls `onSetParent(itemId, null)`
 
-### Phase 4: Allow Same Task/Territory Across Campaigns
+### Step 4: Verify `setItemParent` Updates Database Correctly
 
-**File**: `AddItemDialog.tsx`
-
-Change:
-- Remove the filter that excludes items already in this campaign
-- Users should be able to add the same task to multiple campaigns
-
-### Phase 5: Implement Task-Under-Territory Embedding
-
-**Files**: `CampaignSession.tsx`, `SortableTaskItem.tsx`, `useCampaignSession.ts`
-
-1. When dragging a task onto a territory, set `parent_item_id` to the territory's item ID
-2. Visual changes:
-   - Items with `parent_item_id` get `ml-8` (left margin) indentation
-   - Territories get a distinct background color (e.g., `bg-accent/5` with amber border)
-3. Time aggregation:
-   - Calculate territory time as sum of all child item times + its own direct time
-   - Display this aggregated time on the territory row
-4. Only allow selecting territories as "current task" too (territories are workable items)
-
-### Phase 6: Update Drag-and-Drop Logic
-
-**File**: `CampaignSession.tsx`
-
-Modify the DnD logic to:
-1. Detect when dropping onto a territory (project-type item)
-2. Set `parent_item_id` accordingly
-3. Update display order to place child items after parent
-4. Allow dragging items out of territories to become top-level
-
-### Phase 7: Time Persistence Logic
-
-**File**: `useCampaignSession.ts`
-
-Ensure time is saved to source records incrementally:
-1. On task switch: save current task's time to `campaign_item.time_spent` and (if linked) to `tasks.time_logged` or `projects.time_spent`
-2. On complete/abandon: same as above plus status update
-3. For territories: when child times change, update parent territory's aggregated view
+Ensure `useCampaignSession.ts` properly updates `parent_item_id` in the database and that the optimistic UI update reflects immediately.
 
 ---
 
-## Technical Details
+## Detailed Code Changes
 
-### Database Migration
-```sql
--- Add columns for temporary items
-ALTER TABLE public.campaign_items 
-  ADD COLUMN IF NOT EXISTS is_temporary boolean DEFAULT false,
-  ADD COLUMN IF NOT EXISTS display_name text,
-  ADD COLUMN IF NOT EXISTS item_type text DEFAULT 'task';
+### File: `src/components/campaigns/SortableTaskItem.tsx`
 
--- Add comment for clarity
-COMMENT ON COLUMN public.campaign_items.is_temporary IS 'True if quick-added and not yet saved to main tasks/projects tables';
-COMMENT ON COLUMN public.campaign_items.display_name IS 'Display name for temporary items without linked task/project';
-COMMENT ON COLUMN public.campaign_items.item_type IS 'Type of item: task or project';
-```
+**Changes:**
+1. Remove `pointer-events-none` from nest zone
+2. Position nest zone on right 25% of the row
+3. Add visual feedback (background color change) when hovering
+4. Add an "Unembed" button for nested items
+5. Show a subtle right-side indicator during drag
 
-### Component Changes Summary
+### File: `src/components/campaigns/QuestItemList.tsx`
 
-| Component | Changes |
-|-----------|---------|
-| `SortableTaskItem.tsx` | Add indentation for nested items, distinct territory styling, "make permanent" button |
-| `AddItemDialog.tsx` | Change quick-add to create temporary campaign_items instead of main table records |
-| `CampaignCreator.tsx` | Same quick-add fix as AddItemDialog |
-| `CampaignSession.tsx` | Update drag-drop to support embedding, render nested items correctly |
-| `useCampaignSession.ts` | Add functions: `setItemParent()`, `makeItemPermanent()`, calculate aggregated time |
-| `useCampaigns.ts` | Update `CampaignItem` interface with new fields |
+**Changes:**
+1. Add drag monitoring to show nest targets more clearly
+2. Ensure the `RootDropZone` for unembedding works properly
+3. Add visual "drop here to unembed" feedback
 
-### Visual Hierarchy Example
+### File: `src/hooks/useCampaignSession.ts`
+
+**Changes:**
+1. Verify `setItemParent` properly awaits the database update before updating local state
+2. Ensure display order is recalculated after nesting
+
+---
+
+## Visual Mockup
+
 ```text
 Quest Items:
-  [Territory] Loveable Practice          30m total  [map icon]
-      [Task] Build login page            15m        [hammer icon]
-      [Task] Test authentication         10m        [hammer icon]
-      [Task] Pop-up: Fix bug #1           5m        [star + hammer icon] [save btn]
-  [Task] Send emails                     10m        [hammer icon]
+┌──────────────────────────────────────────────────┬─────────┐
+│ ⚒️ Tinker with Loveable              10m        │ [NEST]  │
+├──────────────────────────────────────────────────┴─────────┤
+│   ↳ ⚒️ Minor Debugging                5m          [↰]     │  ← Indented + unembed button
+├────────────────────────────────────────────────────────────┤
+│ ⚒️ Go and Collect mail                 —                   │
+└────────────────────────────────────────────────────────────┘
 ```
 
-### Key Behaviors
-1. **Territories styled differently**: Amber/gold tinted background, map icon, shows aggregated time
-2. **Nested items indented**: Left margin shows parent-child relationship
-3. **Temporary items marked**: Star or sparkle icon + save button to make permanent
-4. **Time flows up**: Child time counted in parent territory totals
-5. **Territories selectable**: Can work directly on a territory like a task
+- **[NEST]** = Drop zone (right 25%) - visible during drag
+- **[↰]** = Unembed button for nested items
+- Nested items have left margin (24px per level)
+
+---
+
+## Technical Summary
+
+| File | Change |
+|------|--------|
+| `SortableTaskItem.tsx` | Fix nest zone pointer events, add unembed button, position nest zone on right |
+| `QuestItemList.tsx` | Add drag state tracking, improve visual feedback |
+| `useCampaignSession.ts` | Ensure setItemParent awaits DB update properly |
+
+This fix will enable:
+1. **Reordering**: Drag items up/down to reorder within their current level
+2. **Embedding**: Drop on the right portion of an item to nest under it
+3. **Unembedding**: Click the unembed button on nested items OR drop on empty space
+4. **Visual hierarchy**: Nested items show proper indentation
