@@ -132,6 +132,10 @@ export function useCampaignSession(campaign: Campaign | null) {
     return () => clearInterval(intervalId);
   }, [timerState.isRunning]);
 
+  // Track last commit time for periodic commits
+  const lastCommitRef = useRef<number>(Date.now());
+  const COMMIT_INTERVAL_MS = 90_000; // 90 seconds
+
   // Visibility/focus resync - immediately recompute times when returning to tab
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -149,12 +153,21 @@ export function useCampaignSession(campaign: Campaign | null) {
       setTick(t => t + 1); // Force immediate re-render
     };
     
+    // pagehide is more reliable on mobile than beforeunload
+    const handlePageHide = () => {
+      if (timerState.isRunning && campaign) {
+        saveTimerState(campaign.id, timerState);
+      }
+    };
+    
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('pagehide', handlePageHide);
     
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('pagehide', handlePageHide);
     };
   }, [timerState, campaign]);
 
@@ -169,6 +182,67 @@ export function useCampaignSession(campaign: Campaign | null) {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [timerState, campaign]);
+
+  // Periodic commit to database while running (every ~90 seconds)
+  // This protects against localStorage loss and syncs across devices
+  useEffect(() => {
+    if (!timerState.isRunning || !campaign) return;
+
+    const intervalId = setInterval(async () => {
+      // Only commit if visible and enough time has passed
+      if (document.visibilityState !== 'visible') return;
+      
+      const now = Date.now();
+      const msSinceLastCommit = now - lastCommitRef.current;
+      
+      if (msSinceLastCommit < COMMIT_INTERVAL_MS) return;
+      
+      // Calculate time to commit for current item
+      const currentItem = items[timerState.currentTaskIndex];
+      if (!currentItem || !timerState.runningSince) return;
+
+      const runningMs = now - timerState.runningSince;
+      const secondsToCommit = Math.floor(runningMs / 1000);
+      
+      if (secondsToCommit < 60) return; // Only commit if at least 1 minute elapsed
+      
+      // Commit delta to campaign_item
+      await supabase
+        .from("campaign_items")
+        .update({ 
+          time_spent: (currentItem.time_spent || 0) + secondsToCommit
+        })
+        .eq("id", currentItem.id);
+      
+      // Update local item state
+      setItems(prev => prev.map(item => 
+        item.id === currentItem.id 
+          ? { ...item, time_spent: (item.time_spent || 0) + secondsToCommit }
+          : item
+      ));
+      
+      // Reset the "runningSince" to now and accumulate the committed time
+      setTimerState(prev => ({
+        ...prev,
+        runningSince: now,
+        accumulatedTaskMs: prev.accumulatedTaskMs + runningMs,
+        accumulatedSessionMs: prev.accumulatedSessionMs + runningMs,
+        itemAccumulatedMs: {
+          ...prev.itemAccumulatedMs,
+          [currentItem.id]: (prev.itemAccumulatedMs[currentItem.id] || 0) + runningMs
+        }
+      }));
+      
+      lastCommitRef.current = now;
+      
+      // Also save to localStorage
+      if (campaign) {
+        saveTimerState(campaign.id, timerState);
+      }
+    }, 30_000); // Check every 30 seconds
+    
+    return () => clearInterval(intervalId);
+  }, [timerState.isRunning, timerState.runningSince, timerState.currentTaskIndex, campaign, items]);
 
   // Hydrate timer state on mount (restore from localStorage if running)
   useEffect(() => {
