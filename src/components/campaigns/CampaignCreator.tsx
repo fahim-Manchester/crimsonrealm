@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
-import { Plus, Zap, Moon, X } from "lucide-react";
+import { useLocalStorageState } from "@/hooks/useLocalStorageState";
+import { Plus, Zap, Moon, X, Trash2 } from "lucide-react";
 import { z } from "zod";
 import type { Task, Project } from "@/hooks/useCampaigns";
 
@@ -33,6 +34,35 @@ export interface TemporaryItem {
   description: string | null;
 }
 
+// Draft state structure for localStorage persistence
+interface CampaignDraft {
+  campaignName: string;
+  difficulty: string;
+  plannedHours: number;
+  selectedTasks: string[];
+  selectedProjects: string[];
+  temporaryItems: TemporaryItem[];
+  questTitle: string;
+  questDescription: string;
+  territoryName: string;
+  territoryDescription: string;
+  activeTab: string;
+}
+
+const DEFAULT_DRAFT: CampaignDraft = {
+  campaignName: "",
+  difficulty: "medium",
+  plannedHours: 1,
+  selectedTasks: [],
+  selectedProjects: [],
+  temporaryItems: [],
+  questTitle: "",
+  questDescription: "",
+  territoryName: "",
+  territoryDescription: "",
+  activeTab: "tasks"
+};
+
 interface CampaignCreatorProps {
   tasks: Task[];
   projects: Project[];
@@ -50,40 +80,46 @@ interface CampaignCreatorProps {
 
 export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }: CampaignCreatorProps) {
   const { user } = useAuth();
-  const [campaignName, setCampaignName] = useState("");
-  const [difficulty, setDifficulty] = useState("medium");
-  const [plannedHours, setPlannedHours] = useState(1);
-  const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
-  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
+  
+  // Generate storage key based on user ID
+  const draftKey = user ? `campaignCreatorDraft:${user.id}` : "campaignCreatorDraft:anonymous";
+  
+  // Use localStorage-backed state for draft persistence
+  const [draft, setDraft, clearDraft] = useLocalStorageState<CampaignDraft>(draftKey, DEFAULT_DRAFT);
+  
   const [isGeneratingName, setIsGeneratingName] = useState(false);
   const [isGuessingDifficulty, setIsGuessingDifficulty] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
-  // Temporary items (Pop-up Quests & Hidden Territories) - stored locally until campaign creation
-  const [temporaryItems, setTemporaryItems] = useState<TemporaryItem[]>([]);
-  
-  // Quick add form states
-  const [questTitle, setQuestTitle] = useState("");
-  const [questDescription, setQuestDescription] = useState("");
-  const [territoryName, setTerritoryName] = useState("");
-  const [territoryDescription, setTerritoryDescription] = useState("");
+  // Derived values from draft
+  const { 
+    campaignName, difficulty, plannedHours, 
+    selectedTasks, selectedProjects, temporaryItems,
+    questTitle, questDescription, territoryName, territoryDescription,
+    activeTab
+  } = draft;
+
+  // Helper to update draft fields
+  const updateDraft = useCallback(<K extends keyof CampaignDraft>(field: K, value: CampaignDraft[K]) => {
+    setDraft(prev => ({ ...prev, [field]: value }));
+  }, [setDraft]);
 
   const popupQuests = temporaryItems.filter(i => i.type === "popup_quest");
   const hiddenTerritories = temporaryItems.filter(i => i.type === "hidden_territory");
 
   const toggleTask = (taskId: string) => {
-    setSelectedTasks(prev =>
-      prev.includes(taskId)
-        ? prev.filter(id => id !== taskId)
-        : [...prev, taskId]
+    updateDraft('selectedTasks', 
+      selectedTasks.includes(taskId)
+        ? selectedTasks.filter(id => id !== taskId)
+        : [...selectedTasks, taskId]
     );
   };
 
   const toggleProject = (projectId: string) => {
-    setSelectedProjects(prev =>
-      prev.includes(projectId)
-        ? prev.filter(id => id !== projectId)
-        : [...prev, projectId]
+    updateDraft('selectedProjects',
+      selectedProjects.includes(projectId)
+        ? selectedProjects.filter(id => id !== projectId)
+        : [...selectedProjects, projectId]
     );
   };
 
@@ -105,10 +141,10 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
       description: validation.data.description || null
     };
 
-    setTemporaryItems(prev => [...prev, newItem]);
+    updateDraft('temporaryItems', [...temporaryItems, newItem]);
     toast.success("⚡ Pop-up Quest added!");
-    setQuestTitle("");
-    setQuestDescription("");
+    updateDraft('questTitle', "");
+    updateDraft('questDescription', "");
   };
 
   const handleAddHiddenTerritory = () => {
@@ -129,14 +165,19 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
       description: validation.data.description || null
     };
 
-    setTemporaryItems(prev => [...prev, newItem]);
+    updateDraft('temporaryItems', [...temporaryItems, newItem]);
     toast.success("🌙 Hidden Territory added!");
-    setTerritoryName("");
-    setTerritoryDescription("");
+    updateDraft('territoryName', "");
+    updateDraft('territoryDescription', "");
   };
 
   const removeTemporaryItem = (id: string) => {
-    setTemporaryItems(prev => prev.filter(i => i.id !== id));
+    updateDraft('temporaryItems', temporaryItems.filter(i => i.id !== id));
+  };
+
+  const handleClearDraft = () => {
+    clearDraft();
+    toast.success("Draft cleared");
   };
 
   const generateCampaignName = async () => {
@@ -173,7 +214,7 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
         return;
       }
       if (data?.name) {
-        setCampaignName(data.name);
+        updateDraft('campaignName', data.name);
       }
     } catch (error) {
       console.error(error);
@@ -213,9 +254,9 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
         return;
       }
       if (data?.difficulty) {
-        setDifficulty(data.difficulty);
+        updateDraft('difficulty', data.difficulty);
         if (data.planned_hours) {
-          setPlannedHours(data.planned_hours);
+          updateDraft('plannedHours', data.planned_hours);
         }
         toast.success(`AI suggests: ${data.difficulty} difficulty`);
       }
@@ -248,6 +289,8 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
         selectedProjects,
         temporaryItems
       );
+      // Clear draft on successful creation
+      clearDraft();
       onClose();
     } catch (error) {
       console.error(error);
@@ -267,7 +310,7 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
         <div className="flex gap-2">
           <Input
             value={campaignName}
-            onChange={(e) => setCampaignName(e.target.value)}
+            onChange={(e) => updateDraft('campaignName', e.target.value)}
             placeholder="Name your campaign..."
             className="gothic-input flex-1"
           />
@@ -290,7 +333,7 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
       <div className="space-y-2">
         <Label className="font-cinzel text-sm tracking-wide">Difficulty</Label>
         <div className="flex gap-2">
-          <Select value={difficulty} onValueChange={setDifficulty}>
+          <Select value={difficulty} onValueChange={(val) => updateDraft('difficulty', val)}>
             <SelectTrigger className="gothic-input flex-1">
               <SelectValue />
             </SelectTrigger>
@@ -325,13 +368,13 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
           min={0.5}
           step={0.5}
           value={plannedHours}
-          onChange={(e) => setPlannedHours(parseFloat(e.target.value) || 1)}
+          onChange={(e) => updateDraft('plannedHours', parseFloat(e.target.value) || 1)}
           className="gothic-input"
         />
       </div>
 
       {/* Selection Tabs */}
-      <Tabs defaultValue="tasks" className="w-full">
+      <Tabs value={activeTab} onValueChange={(val) => updateDraft('activeTab', val)} className="w-full">
         <TabsList className="w-full bg-muted/50 grid grid-cols-3">
           <TabsTrigger value="tasks" className="font-cinzel text-xs">
             Tasks ({selectedTasks.length})
@@ -425,14 +468,14 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
             </div>
             <Input
               value={questTitle}
-              onChange={(e) => setQuestTitle(e.target.value)}
+              onChange={(e) => updateDraft('questTitle', e.target.value)}
               placeholder="Task name..."
               className="gothic-input border-amber-500/30 focus:border-amber-500"
               maxLength={200}
             />
             <Textarea
               value={questDescription}
-              onChange={(e) => setQuestDescription(e.target.value)}
+              onChange={(e) => updateDraft('questDescription', e.target.value)}
               placeholder="Optional details..."
               className="gothic-input min-h-[50px] resize-none text-sm border-amber-500/30 focus:border-amber-500"
               maxLength={500}
@@ -457,14 +500,14 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
             </div>
             <Input
               value={territoryName}
-              onChange={(e) => setTerritoryName(e.target.value)}
+              onChange={(e) => updateDraft('territoryName', e.target.value)}
               placeholder="Territory name..."
               className="gothic-input border-purple-500/30 focus:border-purple-500"
               maxLength={200}
             />
             <Textarea
               value={territoryDescription}
-              onChange={(e) => setTerritoryDescription(e.target.value)}
+              onChange={(e) => updateDraft('territoryDescription', e.target.value)}
               placeholder="Optional details..."
               className="gothic-input min-h-[50px] resize-none text-sm border-purple-500/30 focus:border-purple-500"
               maxLength={500}
@@ -519,6 +562,18 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
 
       {/* Actions */}
       <div className="flex gap-3 pt-4 border-t border-border/30">
+        {/* Clear Draft button - only show if there's a draft */}
+        {(campaignName || selectedTasks.length > 0 || selectedProjects.length > 0 || temporaryItems.length > 0) && (
+          <Button
+            variant="ghost"
+            onClick={handleClearDraft}
+            className="text-muted-foreground hover:text-destructive"
+            size="icon"
+            title="Clear draft"
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        )}
         <Button
           variant="outline"
           onClick={onClose}
