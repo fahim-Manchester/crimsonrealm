@@ -16,14 +16,18 @@ interface HydrationResult<T> {
  * Hydrates on mount and RE-HYDRATES when key changes.
  * Survives full page reloads.
  * 
- * Returns [state, setState, clear, wasRestored]
+ * CRITICAL FIX: Uses ref-backed state to ensure persistImmediately listeners
+ * always write the latest state, even if React hasn't re-rendered yet.
+ * 
+ * Returns [state, setState, clear, wasRestored, persistNow]
  * - wasRestored: true if state was loaded from localStorage (useful for "Draft restored" toast)
+ * - persistNow: function to immediately flush current state to localStorage
  */
 export function useLocalStorageState<T>(
   key: string,
   initialValue: T,
   options: UseLocalStorageStateOptions = {}
-): [T, React.Dispatch<React.SetStateAction<T>>, () => void, boolean] {
+): [T, React.Dispatch<React.SetStateAction<T>>, () => void, boolean, () => void] {
   const { debounceMs = 200, migrateOnKeyChange = true } = options;
   
   // Track previous key to detect key changes
@@ -51,11 +55,15 @@ export function useLocalStorageState<T>(
   }, [initialValue]);
   
   // Initialize state - hydrate from localStorage on first render
-  const [state, setState] = useState<T>(() => {
+  const [state, setStateInternal] = useState<T>(() => {
     const result = hydrateFromStorage(key);
     prevKeyRef.current = key;
     return result.value;
   });
+  
+  // REF-BACKED STATE: Always holds the latest state value synchronously
+  // This is critical for persistImmediately to capture state even before React re-renders
+  const stateRef = useRef<T>(state);
   
   // Track if state was restored from storage
   const [wasRestored, setWasRestored] = useState<boolean>(() => {
@@ -78,6 +86,27 @@ export function useLocalStorageState<T>(
   const keyRef = useRef(key);
   keyRef.current = key;
 
+  /**
+   * WRAPPED SETTER: Updates both React state AND the ref synchronously.
+   * This ensures that if visibilitychange/pagehide fires immediately after a click,
+   * we persist the NEW state, not the stale closure value.
+   */
+  const setState = useCallback((action: React.SetStateAction<T>) => {
+    setStateInternal(prev => {
+      const nextValue = typeof action === 'function' 
+        ? (action as (prev: T) => T)(prev) 
+        : action;
+      // Update the ref SYNCHRONOUSLY so persistImmediately sees the latest
+      stateRef.current = nextValue;
+      return nextValue;
+    });
+  }, []);
+
+  // Keep stateRef in sync if state changes from other sources (e.g., re-hydration)
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
   // RE-HYDRATE when key changes (e.g., anonymous → user-specific)
   useEffect(() => {
     const previousKey = prevKeyRef.current;
@@ -90,14 +119,16 @@ export function useLocalStorageState<T>(
     
     if (newKeyResult.wasRestored) {
       // New key has data - use it
-      setState(newKeyResult.value);
+      setStateInternal(newKeyResult.value);
+      stateRef.current = newKeyResult.value;
       setWasRestored(true);
     } else if (migrateOnKeyChange && previousKey) {
       // New key is empty but old key might have data - migrate it
       const oldKeyResult = hydrateFromStorage(previousKey);
       if (oldKeyResult.wasRestored) {
         // Migrate data from old key to new key
-        setState(oldKeyResult.value);
+        setStateInternal(oldKeyResult.value);
+        stateRef.current = oldKeyResult.value;
         setWasRestored(true);
         // Persist to new key immediately
         try {
@@ -141,15 +172,30 @@ export function useLocalStorageState<T>(
     } catch {
       // ignore
     }
-    setState(initialValue);
+    setStateInternal(initialValue);
+    stateRef.current = initialValue;
     setWasRestored(false);
   }, [initialValue]);
 
-  // Also persist on pagehide/beforeunload for mobile reliability
+  /**
+   * PERSIST NOW: Immediately flush the current state to localStorage.
+   * Call this after critical actions (Quick Add, Remove) to ensure durability
+   * even if the browser backgrounds the page before the debounce fires.
+   */
+  const persistNow = useCallback(() => {
+    try {
+      localStorage.setItem(keyRef.current, JSON.stringify(stateRef.current));
+    } catch {
+      // localStorage might be unavailable
+    }
+  }, []);
+
+  // Persist on pagehide/beforeunload/visibilitychange for mobile reliability
+  // CRITICAL: Uses stateRef.current to capture the LATEST state
   useEffect(() => {
     const persistImmediately = () => {
       try {
-        localStorage.setItem(keyRef.current, JSON.stringify(state));
+        localStorage.setItem(keyRef.current, JSON.stringify(stateRef.current));
       } catch {
         // ignore
       }
@@ -172,7 +218,7 @@ export function useLocalStorageState<T>(
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [state]);
+  }, []); // Empty deps - uses refs for latest values
 
-  return [state, setState, clear, wasRestored];
+  return [state, setState, clear, wasRestored, persistNow];
 }
