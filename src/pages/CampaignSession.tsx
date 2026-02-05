@@ -84,7 +84,11 @@ const CampaignSession = () => {
   }, [sessionState.campaignTotalTime, sessionState.sessionTime]);
 
   const handleSetParent = async (itemId: string, parentItemId: string | null) => {
-    await setItemParent(itemId, parentItemId);
+    const result = await setItemParent(itemId, parentItemId);
+    if (result?.blocked && result.reason === 'completed') {
+      toast.error("You can't edit a completed campaign. Revive the campaign if you want to make edits.");
+      return;
+    }
     toast.success(parentItemId ? "Item embedded" : "Item unembedded");
   };
 
