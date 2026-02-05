@@ -78,15 +78,77 @@ interface CampaignCreatorProps {
   onRefreshData?: () => void;
 }
 
-export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }: CampaignCreatorProps) {
+/**
+ * WRAPPER COMPONENT: Handles auth loading state to ensure we never
+ * initialize the inner form with a "pending" storage key.
+ * 
+ * This prevents the race condition where:
+ * 1. Auth is loading → storage key = "pending"
+ * 2. Empty draft gets persisted to pending key
+ * 3. Auth resolves → key changes to userId
+ * 4. Real draft appears "lost"
+ */
+export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose, onRefreshData }: CampaignCreatorProps) {
   const { user, loading: authLoading } = useAuth();
   
-  // Generate storage key based on user ID - ONLY use when auth is resolved
-  const draftKey = user ? `campaignCreatorDraft:${user.id}` : null;
+  // Show loading state while auth is resolving
+  // CRITICAL: Don't mount the form until we have a stable userId
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        <span className="ml-2 font-crimson text-muted-foreground">Loading...</span>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <span className="font-crimson text-muted-foreground">Please sign in to create campaigns</span>
+      </div>
+    );
+  }
+
+  // Only render the form once we have a stable userId
+  return (
+    <CampaignCreatorForm
+      userId={user.id}
+      tasks={tasks}
+      projects={projects}
+      onCampaignCreated={onCampaignCreated}
+      onClose={onClose}
+    />
+  );
+}
+
+interface CampaignCreatorFormProps {
+  userId: string;
+  tasks: Task[];
+  projects: Project[];
+  onCampaignCreated: (
+    name: string,
+    difficulty: string,
+    plannedTime: number,
+    taskIds: string[],
+    projectIds: string[],
+    temporaryItems: TemporaryItem[]
+  ) => Promise<void>;
+  onClose: () => void;
+}
+
+/**
+ * INNER FORM COMPONENT: Receives a stable userId and uses it for the storage key.
+ * This guarantees we never use a "pending" key for authenticated users.
+ */
+function CampaignCreatorForm({ userId, tasks, projects, onCampaignCreated, onClose }: CampaignCreatorFormProps) {
+  // STABLE storage key - userId is guaranteed to be defined here
+  const draftKey = `campaignCreatorDraft:${userId}`;
   
-  // Use localStorage-backed state for draft persistence (with wasRestored flag)
-  const [draft, setDraft, clearDraft, wasRestored] = useLocalStorageState<CampaignDraft>(
-    draftKey ?? "campaignCreatorDraft:pending", // Temporary key while loading
+  // Use localStorage-backed state for draft persistence
+  // Now returns persistNow as 5th value
+  const [draft, setDraft, clearDraft, wasRestored, persistNow] = useLocalStorageState<CampaignDraft>(
+    draftKey,
     DEFAULT_DRAFT
   );
   
@@ -99,14 +161,14 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
   
   // Show "Draft restored" toast once when draft is loaded from storage
   useEffect(() => {
-    if (!authLoading && wasRestored && !hasShownRestoredToast.current) {
+    if (wasRestored && !hasShownRestoredToast.current) {
       hasShownRestoredToast.current = true;
       toast.success("📜 Draft restored", {
         description: "Your previous campaign setup was saved",
         duration: 3000
       });
     }
-  }, [authLoading, wasRestored]);
+  }, [wasRestored]);
 
   // Derived values from draft
   const { 
@@ -120,16 +182,6 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
   const updateDraft = useCallback(<K extends keyof CampaignDraft>(field: K, value: CampaignDraft[K]) => {
     setDraft(prev => ({ ...prev, [field]: value }));
   }, [setDraft]);
-  
-  // Show loading state while auth is resolving (prevents draft key mismatch)
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
-        <span className="ml-2 font-crimson text-muted-foreground">Loading...</span>
-      </div>
-    );
-  }
 
   const popupQuests = temporaryItems.filter(i => i.type === "popup_quest");
   const hiddenTerritories = temporaryItems.filter(i => i.type === "hidden_territory");
@@ -168,10 +220,18 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
       description: validation.data.description || null
     };
 
-    updateDraft('temporaryItems', [...temporaryItems, newItem]);
+    setDraft(prev => ({
+      ...prev,
+      temporaryItems: [...prev.temporaryItems, newItem],
+      questTitle: "",
+      questDescription: ""
+    }));
+    
+    // CRITICAL: Persist immediately after adding - survives instant tab switch
+    // Use setTimeout(0) to ensure the ref is updated after setDraft
+    setTimeout(() => persistNow(), 0);
+    
     toast.success("⚡ Pop-up Quest added!");
-    updateDraft('questTitle', "");
-    updateDraft('questDescription', "");
   };
 
   const handleAddHiddenTerritory = () => {
@@ -192,14 +252,27 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
       description: validation.data.description || null
     };
 
-    updateDraft('temporaryItems', [...temporaryItems, newItem]);
+    setDraft(prev => ({
+      ...prev,
+      temporaryItems: [...prev.temporaryItems, newItem],
+      territoryName: "",
+      territoryDescription: ""
+    }));
+    
+    // CRITICAL: Persist immediately after adding - survives instant tab switch
+    setTimeout(() => persistNow(), 0);
+    
     toast.success("🌙 Hidden Territory added!");
-    updateDraft('territoryName', "");
-    updateDraft('territoryDescription', "");
   };
 
   const removeTemporaryItem = (id: string) => {
-    updateDraft('temporaryItems', temporaryItems.filter(i => i.id !== id));
+    setDraft(prev => ({
+      ...prev,
+      temporaryItems: prev.temporaryItems.filter(i => i.id !== id)
+    }));
+    
+    // CRITICAL: Persist immediately after removing
+    setTimeout(() => persistNow(), 0);
   };
 
   const handleClearDraft = () => {
