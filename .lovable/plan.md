@@ -1,174 +1,275 @@
 
-
-# AI Usage Cap System for Beta Testers
+# Time Subsumption Feature Implementation Plan
 
 ## Overview
-This plan creates a usage tracking and rate limiting system to protect your Lovable AI credits during beta testing. Each user will have daily AI request limits, and when they exceed these limits, they'll see a friendly message instead of the AI feature working (preventing credit drain).
+This plan implements dynamic time aggregation for parent quest items in campaigns, ensuring that when items are reparented (nested/unnested), their time is correctly added to or subtracted from the new/old parent's displayed total. The changes also sync to the source tasks/projects in Forge and Territories, but only while the campaign remains active.
 
 ---
 
-## How It Works
+## Requirements Summary
 
-The system tracks every AI request per user per day. When a user hits their daily limit, AI features gracefully degrade:
-- "Generate Name" and "AI Guess" buttons show a message like "Daily AI limit reached"
-- "Cleave" feature shows a similar message
-- Users can still use the app normally - only AI features are restricted
-
----
-
-## Configuration Options
-
-You can configure:
-- **Daily request limit per user** (e.g., 10 requests/day)
-- **Which actions count** (name generation, difficulty guessing, cleaving)
-- **Reset time** (midnight UTC each day)
+1. **Parent Time Aggregation**: Parent items display their own time + all descendants' time
+2. **Dynamic Reparenting**: When moving a child:
+   - Old parent subtracts the child's total time from its sync
+   - New parent adds the child's total time to its sync
+3. **Retroactive Support**: Historical time from previous sessions is included in subsumption
+4. **Campaign Status Guard**: Reparenting is blocked on completed campaigns with a notification
+5. **Data Preservation**: Deleting or completing a campaign does NOT affect already-synced time in Forge/Territories
 
 ---
 
-## Database Schema
+## Technical Analysis
 
-A new `ai_usage` table to track requests:
+### Current State
+- **Display aggregation** in `QuestItemList.tsx` already sums descendant times (lines 40-60) - this works correctly
+- **`setItemParent`** in `useCampaignSession.ts` (lines 367-408) only updates `parent_item_id` in DB and reorders locally - **does NOT sync time changes to source**
+- **Time syncing** only happens during timer events (switch task, complete, abandon, end session, manual edit)
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | The user making requests |
-| action_type | text | Which AI action (generate_name, guess_difficulty, cleave) |
-| created_at | timestamp | When the request was made |
-
-This allows counting requests per user per day with a simple query.
-
----
-
-## Architecture
-
-```text
-Frontend                    Edge Function                   AI Gateway
-   |                              |                              |
-   |-- Request AI feature ------->|                              |
-   |                              |-- Check usage count -------->|
-   |                              |<-- Count for today ----------|
-   |                              |                              |
-   |                              |-- If limit exceeded -------->|
-   |<-- "Limit reached" error ----|                              |
-   |                              |                              |
-   |                              |-- If allowed --------------->|
-   |                              |     - Call AI gateway ------>|
-   |                              |<-------- Response -----------|
-   |                              |     - Log usage ------------>|
-   |<-- AI response --------------|                              |
-```
+### Gap to Fill
+When reparenting occurs, the system needs to:
+1. Calculate the total time of the moved item (including its own descendants)
+2. Adjust the **source project** time in the `projects` table when the old/new parent is a Territory
+3. Block reparenting if campaign status is "completed"
 
 ---
 
 ## Implementation Steps
 
-### Step 1: Create ai_usage Table
-Create a new database table to store usage records with RLS policies ensuring users can only see their own usage (though edge functions use service role to bypass this for tracking).
+### Step 1: Add Campaign Status Check in `setItemParent`
 
-### Step 2: Add Usage Limit Configuration
-Create a configuration constant in a shared location defining:
-- `DAILY_AI_LIMIT = 10` (adjustable)
-- List of tracked action types
+**File**: `src/hooks/useCampaignSession.ts`
 
-### Step 3: Update campaign-ai Edge Function
-Before calling the AI gateway:
-1. Get user ID from request (via auth header or passed in body)
-2. Count today's requests for this user
-3. If count >= limit, return a `429 Too Many Requests` with friendly message
-4. After successful AI call, insert a usage record
+Before allowing reparenting, check if campaign is completed and return early with an error flag:
 
-### Step 4: Update cleave Edge Function
-Same pattern as campaign-ai:
-1. Check usage count
-2. Return limit error if exceeded
-3. Log usage after successful call
-
-### Step 5: Update Frontend Error Handling
-The frontend already handles 429 errors with toast messages. We'll ensure the error message clearly indicates it's a daily limit (not a temporary rate limit).
-
----
-
-## Technical Details
-
-### Usage Check Query (in Edge Functions)
-```typescript
-// Supabase client with service role for internal operations
-const supabaseAdmin = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-);
-
-// Get today's start (UTC midnight)
-const todayStart = new Date();
-todayStart.setUTCHours(0, 0, 0, 0);
-
-// Count requests for this user today
-const { count } = await supabaseAdmin
-  .from('ai_usage')
-  .select('*', { count: 'exact', head: true })
-  .eq('user_id', userId)
-  .gte('created_at', todayStart.toISOString());
-
-const DAILY_LIMIT = 10;
-if ((count || 0) >= DAILY_LIMIT) {
-  return new Response(
-    JSON.stringify({ 
-      error: "Daily AI limit reached. Resets at midnight UTC.",
-      code: "DAILY_LIMIT_EXCEEDED"
-    }),
-    { status: 429, headers: corsHeaders }
-  );
-}
+```text
+const setItemParent = useCallback(async (itemId: string, parentItemId: string | null) => {
+  // Block if campaign is completed
+  if (campaign?.status === 'completed') {
+    return { blocked: true, reason: 'completed' };
+  }
+  
+  const item = items.find((i) => i.id === itemId);
+  if (!item) return { blocked: false };
+  // ... rest of logic
+}, [items, campaign]);
 ```
 
-### Logging Usage After Success
-```typescript
-// After successful AI response
-await supabaseAdmin.from('ai_usage').insert({
-  user_id: userId,
-  action_type: action // 'generate_name', 'guess_difficulty', 'cleave'
-});
+### Step 2: Create Helper to Calculate Descendant Time
+
+**File**: `src/hooks/useCampaignSession.ts`
+
+Add a utility function that sums an item's own time plus all descendant times:
+
+```text
+const getDescendantTotalSeconds = useCallback((itemId: string) => {
+  const childrenMap = buildLocalChildrenMap(items);
+  
+  const sumTime = (id: string, visited: Set<string>): number => {
+    if (visited.has(id)) return 0;
+    visited.add(id);
+    
+    const item = items.find(i => i.id === id);
+    if (!item) return 0;
+    
+    let total = item.time_spent || 0;
+    const children = childrenMap.get(id) || [];
+    for (const child of children) {
+      total += sumTime(child.id, visited);
+    }
+    return total;
+  };
+  
+  return sumTime(itemId, new Set());
+}, [items]);
 ```
 
-### Getting User ID in Edge Functions
-The edge functions currently have `verify_jwt = false`. To identify users, we'll:
-1. Pass `userId` in the request body from the authenticated frontend
-2. Validate this matches the auth token if provided
+### Step 3: Modify `setItemParent` to Sync Time on Reparent
+
+**File**: `src/hooks/useCampaignSession.ts`
+
+When reparenting:
+1. Calculate the moved item's total time (self + descendants)
+2. Find the old parent's source project (if it's a Territory) and **subtract** the time
+3. Find the new parent's source project (if it's a Territory) and **add** the time
+
+```text
+const setItemParent = useCallback(async (itemId: string, parentItemId: string | null) => {
+  if (campaign?.status === 'completed') {
+    return { blocked: true, reason: 'completed' };
+  }
+  
+  const item = items.find((i) => i.id === itemId);
+  if (!item) return { blocked: false };
+  if (parentItemId === itemId) return { blocked: false };
+
+  // Calculate total time of moved subtree
+  const movedTimeSeconds = getDescendantTotalSeconds(itemId);
+  const movedTimeMinutes = Math.ceil(movedTimeSeconds / 60);
+
+  // Find old parent's project (if any)
+  const oldParent = item.parent_item_id ? items.find(i => i.id === item.parent_item_id) : null;
+  const oldParentProjectId = oldParent?.project_id || null;
+
+  // Find new parent's project (if any)
+  const newParent = parentItemId ? items.find(i => i.id === parentItemId) : null;
+  const newParentProjectId = newParent?.project_id || null;
+
+  // Subtract from old parent's source project
+  if (oldParentProjectId && movedTimeMinutes > 0) {
+    await decrementProjectMinutes(oldParentProjectId, movedTimeMinutes);
+  }
+
+  // Add to new parent's source project
+  if (newParentProjectId && movedTimeMinutes > 0) {
+    await incrementProjectMinutes(newParentProjectId, movedTimeMinutes);
+  }
+
+  // Update DB
+  await supabase
+    .from("campaign_items")
+    .update({ parent_item_id: parentItemId })
+    .eq("id", itemId);
+
+  // Reorder locally (existing logic)
+  // ...
+  
+  return { blocked: false };
+}, [items, campaign, getDescendantTotalSeconds, incrementProjectMinutes]);
+```
+
+### Step 4: Add `decrementProjectMinutes` Helper
+
+**File**: `src/hooks/useCampaignSession.ts`
+
+Add a new function to safely subtract time (with floor at 0):
+
+```text
+const decrementProjectMinutes = useCallback(async (projectId: string, minutes: number) => {
+  if (minutes === 0) return;
+  const { data, error } = await supabase
+    .from("projects")
+    .select("time_spent")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (error || !data) return;
+  const current = data.time_spent || 0;
+  const newTime = Math.max(0, current - minutes); // Never go negative
+  await supabase.from("projects").update({ time_spent: newTime }).eq("id", projectId);
+}, []);
+```
+
+### Step 5: Update UI to Handle Blocked Reparenting
+
+**File**: `src/pages/CampaignSession.tsx`
+
+Modify `handleSetParent` to check the return value and show appropriate notification:
+
+```text
+const handleSetParent = async (itemId: string, parentItemId: string | null) => {
+  const result = await setItemParent(itemId, parentItemId);
+  if (result?.blocked && result.reason === 'completed') {
+    toast.error("You can't edit a completed campaign. Revive the campaign if you want to make edits.");
+    return;
+  }
+  toast.success(parentItemId ? "Item embedded" : "Item unembedded");
+};
+```
+
+### Step 6: Handle Multi-Level Nesting
+
+When a child is moved and it has its own children, the entire subtree's time should be:
+- Subtracted from the old ancestor Territory (if any)
+- Added to the new ancestor Territory (if any)
+
+The `getDescendantTotalSeconds` function handles this by recursively summing all descendants.
+
+### Step 7: Edge Case - Nested Territory Contains Task
+
+If we have:
+```text
+Territory A (project)
+  └── Task B
+```
+
+And Task B is moved to:
+```text
+Territory C (project)
+  └── Task B
+```
+
+The implementation should:
+- Subtract Task B's time from Territory A's source project
+- Add Task B's time to Territory C's source project
+
+This is handled by checking `oldParent?.project_id` and `newParent?.project_id`.
 
 ---
 
-## Frontend Changes
+## Data Flow Diagram
 
-### Update Error Messages
-In the hooks that call AI functions, differentiate between:
-- `DAILY_LIMIT_EXCEEDED` - "You've reached your daily AI limit (10/day). Resets at midnight UTC."
-- Generic 429 - "Rate limit exceeded. Try again in a moment."
-
-### Optional: Show Remaining Count
-Add a small indicator showing "AI requests: 3/10 remaining today" in the UI.
+```text
+User drags Item X under Territory Y
+          │
+          ▼
+┌─────────────────────────────────┐
+│ Check campaign.status           │
+│ Is it "completed"?              │
+└─────────────────────────────────┘
+          │
+    ┌─────┴─────┐
+    │ YES       │ NO
+    ▼           ▼
+┌─────────┐  ┌─────────────────────────────────┐
+│ Block   │  │ Calculate Item X's total time   │
+│ + Toast │  │ (self + all descendants)        │
+└─────────┘  └─────────────────────────────────┘
+                        │
+                        ▼
+             ┌─────────────────────────────────┐
+             │ Old parent is Territory?         │
+             │ → Subtract time from project DB  │
+             └─────────────────────────────────┘
+                        │
+                        ▼
+             ┌─────────────────────────────────┐
+             │ New parent (Y) is Territory?     │
+             │ → Add time to project DB         │
+             └─────────────────────────────────┘
+                        │
+                        ▼
+             ┌─────────────────────────────────┐
+             │ Update parent_item_id in DB      │
+             │ Reorder items locally            │
+             └─────────────────────────────────┘
+```
 
 ---
 
-## Adjustable Settings
+## Files to Modify
 
-The daily limit will be defined as a constant in the edge functions. To change it:
-- Update `DAILY_LIMIT` value in both `campaign-ai/index.ts` and `cleave/index.ts`
-- No database changes needed
-
-For a future enhancement, you could add a `settings` table with `ai_daily_limit` to make this configurable without code changes.
+| File | Changes |
+|------|---------|
+| `src/hooks/useCampaignSession.ts` | Add `decrementProjectMinutes`, `getDescendantTotalSeconds`, modify `setItemParent` to sync time and check campaign status |
+| `src/pages/CampaignSession.tsx` | Update `handleSetParent` to handle blocked result and show toast |
 
 ---
 
-## Summary
+## Testing Scenarios
 
-| Feature | Before | After |
-|---------|--------|-------|
-| AI Name Generation | Unlimited | 10/day per user |
-| AI Difficulty Guess | Unlimited | Shared limit with above |
-| AI Cleave | Unlimited | Shared limit with above |
-| Credit Protection | None | Full - requests blocked after limit |
-| User Experience | Unlimited | Clear "limit reached" messages |
+1. **Basic reparent**: Move Task A under Territory B → Territory B's source gains Task A's time
+2. **Unparent**: Remove Task A from Territory B → Territory B's source loses Task A's time
+3. **Switch parent**: Move Task A from Territory B to Territory C → B loses time, C gains time
+4. **Nested items**: Move Territory B (with children) under Territory C → C gains total of B + B's children
+5. **Completed campaign**: Try to reparent in completed campaign → Blocked with toast message
+6. **Delete campaign**: After deletion, Forge/Territories retain their synced times
+7. **Zero time item**: Reparent an item with 0 time → No DB calls for time adjustment
 
-This system ensures beta testers can explore AI features while protecting your credits. The 10/day limit is a starting point - you can adjust it based on your credit budget and user feedback.
+---
 
+## Notes
+
+- **Time is stored in seconds** in `campaign_items.time_spent`
+- **Time is stored in minutes** in `tasks.time_logged` and `projects.time_spent`
+- The display aggregation in `QuestItemList.tsx` already works correctly; this plan focuses on syncing to source
+- Campaign deletion already preserves source times (no additional work needed)
+- Active timer behavior is unchanged - only the item being actively worked on accumulates time
