@@ -1,7 +1,47 @@
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
 
 const Index = () => {
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
+  const [isRedirecting, setIsRedirecting] = useState(false);
+
+  // Auto-resume: if logged in and landing on /, redirect to last route or /home
+  useEffect(() => {
+    if (loading) return; // Wait for auth to resolve
+
+    if (user) {
+      // User is logged in - redirect to their last route
+      const lastRouteKey = `lastRoute:${user.id}`;
+      let targetRoute = "/home"; // Default fallback
+
+      try {
+        const storedRoute = localStorage.getItem(lastRouteKey);
+        if (storedRoute && storedRoute !== "/" && storedRoute !== "/auth" && !storedRoute.startsWith("/auth")) {
+          targetRoute = storedRoute;
+        }
+      } catch {
+        // localStorage unavailable
+      }
+
+      setIsRedirecting(true);
+      navigate(targetRoute, { replace: true });
+    }
+  }, [user, loading, navigate]);
+
+  // Show minimal UI while redirecting logged-in users
+  if (loading || isRedirecting) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="font-cinzel text-2xl text-foreground animate-pulse">
+          REALM
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative min-h-screen overflow-hidden">
       {/* Background Image */}
