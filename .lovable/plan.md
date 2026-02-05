@@ -1,275 +1,86 @@
 
-# Time Subsumption Feature Implementation Plan
+# Fix: Prevent App State Reset on Tab Switch / Browser Minimize
 
-## Overview
-This plan implements dynamic time aggregation for parent quest items in campaigns, ensuring that when items are reparented (nested/unnested), their time is correctly added to or subtracted from the new/old parent's displayed total. The changes also sync to the source tasks/projects in Forge and Territories, but only while the campaign remains active.
+## Problem Analysis
+
+When you switch browser tabs or minimize/restore your browser, the app loses its state and reloads data. This is particularly frustrating when building campaigns because you lose your progress in the creator dialog.
+
+### Root Cause
+
+**React Query's default behavior** includes:
+- `refetchOnWindowFocus: true` - Refetches all active queries when you return to the tab
+- `refetchOnReconnect: true` - Refetches when internet reconnects
+- `staleTime: 0` - Data is immediately considered stale
+
+These defaults cause data to refetch aggressively whenever you interact with the browser window, which can:
+1. Reset form state if components re-render with new data
+2. Cause loading spinners to flash
+3. Lose unsaved work in dialogs and forms
+
+### Current Code Issue
+
+In `src/App.tsx`:
+```typescript
+const queryClient = new QueryClient(); // No custom options = all aggressive defaults
+```
 
 ---
 
-## Requirements Summary
+## Solution
 
-1. **Parent Time Aggregation**: Parent items display their own time + all descendants' time
-2. **Dynamic Reparenting**: When moving a child:
-   - Old parent subtracts the child's total time from its sync
-   - New parent adds the child's total time to its sync
-3. **Retroactive Support**: Historical time from previous sessions is included in subsumption
-4. **Campaign Status Guard**: Reparenting is blocked on completed campaigns with a notification
-5. **Data Preservation**: Deleting or completing a campaign does NOT affect already-synced time in Forge/Territories
+### Step 1: Configure QueryClient with Sensible Defaults
 
----
+Update `src/App.tsx` to disable aggressive refetching:
 
-## Technical Analysis
-
-### Current State
-- **Display aggregation** in `QuestItemList.tsx` already sums descendant times (lines 40-60) - this works correctly
-- **`setItemParent`** in `useCampaignSession.ts` (lines 367-408) only updates `parent_item_id` in DB and reorders locally - **does NOT sync time changes to source**
-- **Time syncing** only happens during timer events (switch task, complete, abandon, end session, manual edit)
-
-### Gap to Fill
-When reparenting occurs, the system needs to:
-1. Calculate the total time of the moved item (including its own descendants)
-2. Adjust the **source project** time in the `projects` table when the old/new parent is a Territory
-3. Block reparenting if campaign status is "completed"
-
----
-
-## Implementation Steps
-
-### Step 1: Add Campaign Status Check in `setItemParent`
-
-**File**: `src/hooks/useCampaignSession.ts`
-
-Before allowing reparenting, check if campaign is completed and return early with an error flag:
-
-```text
-const setItemParent = useCallback(async (itemId: string, parentItemId: string | null) => {
-  // Block if campaign is completed
-  if (campaign?.status === 'completed') {
-    return { blocked: true, reason: 'completed' };
-  }
-  
-  const item = items.find((i) => i.id === itemId);
-  if (!item) return { blocked: false };
-  // ... rest of logic
-}, [items, campaign]);
+```typescript
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,        // Data stays fresh for 5 minutes
+      gcTime: 10 * 60 * 1000,          // Cache persists for 10 minutes
+      refetchOnWindowFocus: false,     // DON'T refetch when tab regains focus
+      refetchOnReconnect: false,       // DON'T refetch on internet reconnect
+      retry: 1,                        // Only retry failed requests once
+    },
+  },
+});
 ```
 
-### Step 2: Create Helper to Calculate Descendant Time
+### What These Options Do
 
-**File**: `src/hooks/useCampaignSession.ts`
-
-Add a utility function that sums an item's own time plus all descendant times:
-
-```text
-const getDescendantTotalSeconds = useCallback((itemId: string) => {
-  const childrenMap = buildLocalChildrenMap(items);
-  
-  const sumTime = (id: string, visited: Set<string>): number => {
-    if (visited.has(id)) return 0;
-    visited.add(id);
-    
-    const item = items.find(i => i.id === id);
-    if (!item) return 0;
-    
-    let total = item.time_spent || 0;
-    const children = childrenMap.get(id) || [];
-    for (const child of children) {
-      total += sumTime(child.id, visited);
-    }
-    return total;
-  };
-  
-  return sumTime(itemId, new Set());
-}, [items]);
-```
-
-### Step 3: Modify `setItemParent` to Sync Time on Reparent
-
-**File**: `src/hooks/useCampaignSession.ts`
-
-When reparenting:
-1. Calculate the moved item's total time (self + descendants)
-2. Find the old parent's source project (if it's a Territory) and **subtract** the time
-3. Find the new parent's source project (if it's a Territory) and **add** the time
-
-```text
-const setItemParent = useCallback(async (itemId: string, parentItemId: string | null) => {
-  if (campaign?.status === 'completed') {
-    return { blocked: true, reason: 'completed' };
-  }
-  
-  const item = items.find((i) => i.id === itemId);
-  if (!item) return { blocked: false };
-  if (parentItemId === itemId) return { blocked: false };
-
-  // Calculate total time of moved subtree
-  const movedTimeSeconds = getDescendantTotalSeconds(itemId);
-  const movedTimeMinutes = Math.ceil(movedTimeSeconds / 60);
-
-  // Find old parent's project (if any)
-  const oldParent = item.parent_item_id ? items.find(i => i.id === item.parent_item_id) : null;
-  const oldParentProjectId = oldParent?.project_id || null;
-
-  // Find new parent's project (if any)
-  const newParent = parentItemId ? items.find(i => i.id === parentItemId) : null;
-  const newParentProjectId = newParent?.project_id || null;
-
-  // Subtract from old parent's source project
-  if (oldParentProjectId && movedTimeMinutes > 0) {
-    await decrementProjectMinutes(oldParentProjectId, movedTimeMinutes);
-  }
-
-  // Add to new parent's source project
-  if (newParentProjectId && movedTimeMinutes > 0) {
-    await incrementProjectMinutes(newParentProjectId, movedTimeMinutes);
-  }
-
-  // Update DB
-  await supabase
-    .from("campaign_items")
-    .update({ parent_item_id: parentItemId })
-    .eq("id", itemId);
-
-  // Reorder locally (existing logic)
-  // ...
-  
-  return { blocked: false };
-}, [items, campaign, getDescendantTotalSeconds, incrementProjectMinutes]);
-```
-
-### Step 4: Add `decrementProjectMinutes` Helper
-
-**File**: `src/hooks/useCampaignSession.ts`
-
-Add a new function to safely subtract time (with floor at 0):
-
-```text
-const decrementProjectMinutes = useCallback(async (projectId: string, minutes: number) => {
-  if (minutes === 0) return;
-  const { data, error } = await supabase
-    .from("projects")
-    .select("time_spent")
-    .eq("id", projectId)
-    .maybeSingle();
-  if (error || !data) return;
-  const current = data.time_spent || 0;
-  const newTime = Math.max(0, current - minutes); // Never go negative
-  await supabase.from("projects").update({ time_spent: newTime }).eq("id", projectId);
-}, []);
-```
-
-### Step 5: Update UI to Handle Blocked Reparenting
-
-**File**: `src/pages/CampaignSession.tsx`
-
-Modify `handleSetParent` to check the return value and show appropriate notification:
-
-```text
-const handleSetParent = async (itemId: string, parentItemId: string | null) => {
-  const result = await setItemParent(itemId, parentItemId);
-  if (result?.blocked && result.reason === 'completed') {
-    toast.error("You can't edit a completed campaign. Revive the campaign if you want to make edits.");
-    return;
-  }
-  toast.success(parentItemId ? "Item embedded" : "Item unembedded");
-};
-```
-
-### Step 6: Handle Multi-Level Nesting
-
-When a child is moved and it has its own children, the entire subtree's time should be:
-- Subtracted from the old ancestor Territory (if any)
-- Added to the new ancestor Territory (if any)
-
-The `getDescendantTotalSeconds` function handles this by recursively summing all descendants.
-
-### Step 7: Edge Case - Nested Territory Contains Task
-
-If we have:
-```text
-Territory A (project)
-  └── Task B
-```
-
-And Task B is moved to:
-```text
-Territory C (project)
-  └── Task B
-```
-
-The implementation should:
-- Subtract Task B's time from Territory A's source project
-- Add Task B's time to Territory C's source project
-
-This is handled by checking `oldParent?.project_id` and `newParent?.project_id`.
-
----
-
-## Data Flow Diagram
-
-```text
-User drags Item X under Territory Y
-          │
-          ▼
-┌─────────────────────────────────┐
-│ Check campaign.status           │
-│ Is it "completed"?              │
-└─────────────────────────────────┘
-          │
-    ┌─────┴─────┐
-    │ YES       │ NO
-    ▼           ▼
-┌─────────┐  ┌─────────────────────────────────┐
-│ Block   │  │ Calculate Item X's total time   │
-│ + Toast │  │ (self + all descendants)        │
-└─────────┘  └─────────────────────────────────┘
-                        │
-                        ▼
-             ┌─────────────────────────────────┐
-             │ Old parent is Territory?         │
-             │ → Subtract time from project DB  │
-             └─────────────────────────────────┘
-                        │
-                        ▼
-             ┌─────────────────────────────────┐
-             │ New parent (Y) is Territory?     │
-             │ → Add time to project DB         │
-             └─────────────────────────────────┘
-                        │
-                        ▼
-             ┌─────────────────────────────────┐
-             │ Update parent_item_id in DB      │
-             │ Reorder items locally            │
-             └─────────────────────────────────┘
-```
+| Option | Value | Effect |
+|--------|-------|--------|
+| `staleTime` | 5 minutes | Data won't be considered stale (needing refresh) for 5 minutes |
+| `gcTime` | 10 minutes | Cached data lives for 10 minutes even after components unmount |
+| `refetchOnWindowFocus` | `false` | Switching tabs or minimizing won't trigger refetches |
+| `refetchOnReconnect` | `false` | Internet blips won't cause data reloads |
+| `retry` | `1` | Failed requests retry once (prevents infinite loops) |
 
 ---
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/hooks/useCampaignSession.ts` | Add `decrementProjectMinutes`, `getDescendantTotalSeconds`, modify `setItemParent` to sync time and check campaign status |
-| `src/pages/CampaignSession.tsx` | Update `handleSetParent` to handle blocked result and show toast |
+| File | Change |
+|------|--------|
+| `src/App.tsx` | Update `QueryClient` instantiation with custom default options |
 
 ---
 
-## Testing Scenarios
+## User Experience After Fix
 
-1. **Basic reparent**: Move Task A under Territory B → Territory B's source gains Task A's time
-2. **Unparent**: Remove Task A from Territory B → Territory B's source loses Task A's time
-3. **Switch parent**: Move Task A from Territory B to Territory C → B loses time, C gains time
-4. **Nested items**: Move Territory B (with children) under Territory C → C gains total of B + B's children
-5. **Completed campaign**: Try to reparent in completed campaign → Blocked with toast message
-6. **Delete campaign**: After deletion, Forge/Territories retain their synced times
-7. **Zero time item**: Reparent an item with 0 time → No DB calls for time adjustment
+| Scenario | Before | After |
+|----------|--------|-------|
+| Switch to another tab and back | Data refetches, forms may reset | State preserved, no refetch |
+| Minimize browser and restore | Data refetches | State preserved |
+| Alt-Tab between apps | Data refetches | State preserved |
+| Click browser refresh | Data refetches | Data refetches (expected) |
+| Close and reopen browser | Data refetches | Data refetches (expected) |
 
 ---
 
-## Notes
+## Technical Notes
 
-- **Time is stored in seconds** in `campaign_items.time_spent`
-- **Time is stored in minutes** in `tasks.time_logged` and `projects.time_spent`
-- The display aggregation in `QuestItemList.tsx` already works correctly; this plan focuses on syncing to source
-- Campaign deletion already preserves source times (no additional work needed)
-- Active timer behavior is unchanged - only the item being actively worked on accumulates time
+- Hooks using `useState` + `useEffect` (like `useCampaigns.ts`, `useCampaignSession.ts`) are not affected by React Query settings, but they benefit from the overall stability since they won't compete with React Query re-renders
+- The `useDiary.ts` hook and `EditBookDialog.tsx` component use React Query and will directly benefit from this change
+- Manual refresh is still available via the refresh buttons already in the UI
+- Mutations (create, update, delete) will still invalidate relevant queries as expected
