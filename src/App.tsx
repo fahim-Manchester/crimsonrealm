@@ -16,7 +16,17 @@ import Diary from "./pages/Diary";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,        // Data stays fresh for 5 minutes
+      gcTime: 10 * 60 * 1000,          // Cache persists for 10 minutes
+      refetchOnWindowFocus: false,     // DON'T refetch when tab regains focus
+      refetchOnReconnect: false,       // DON'T refetch on internet reconnect
+      retry: 1,                        // Only retry failed requests once
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
