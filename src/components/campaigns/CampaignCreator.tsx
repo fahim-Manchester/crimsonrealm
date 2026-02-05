@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
-import { Plus, Zap, Moon, X, Trash2 } from "lucide-react";
+import { Plus, Zap, Moon, X, Trash2, Loader2 } from "lucide-react";
 import { z } from "zod";
 import type { Task, Project } from "@/hooks/useCampaigns";
 
@@ -79,17 +79,34 @@ interface CampaignCreatorProps {
 }
 
 export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }: CampaignCreatorProps) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   
-  // Generate storage key based on user ID
-  const draftKey = user ? `campaignCreatorDraft:${user.id}` : "campaignCreatorDraft:anonymous";
+  // Generate storage key based on user ID - ONLY use when auth is resolved
+  const draftKey = user ? `campaignCreatorDraft:${user.id}` : null;
   
-  // Use localStorage-backed state for draft persistence
-  const [draft, setDraft, clearDraft] = useLocalStorageState<CampaignDraft>(draftKey, DEFAULT_DRAFT);
+  // Use localStorage-backed state for draft persistence (with wasRestored flag)
+  const [draft, setDraft, clearDraft, wasRestored] = useLocalStorageState<CampaignDraft>(
+    draftKey ?? "campaignCreatorDraft:pending", // Temporary key while loading
+    DEFAULT_DRAFT
+  );
   
   const [isGeneratingName, setIsGeneratingName] = useState(false);
   const [isGuessingDifficulty, setIsGuessingDifficulty] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  
+  // Track if we've shown the "draft restored" toast
+  const hasShownRestoredToast = useRef(false);
+  
+  // Show "Draft restored" toast once when draft is loaded from storage
+  useEffect(() => {
+    if (!authLoading && wasRestored && !hasShownRestoredToast.current) {
+      hasShownRestoredToast.current = true;
+      toast.success("📜 Draft restored", {
+        description: "Your previous campaign setup was saved",
+        duration: 3000
+      });
+    }
+  }, [authLoading, wasRestored]);
 
   // Derived values from draft
   const { 
@@ -103,6 +120,16 @@ export function CampaignCreator({ tasks, projects, onCampaignCreated, onClose }:
   const updateDraft = useCallback(<K extends keyof CampaignDraft>(field: K, value: CampaignDraft[K]) => {
     setDraft(prev => ({ ...prev, [field]: value }));
   }, [setDraft]);
+  
+  // Show loading state while auth is resolving (prevents draft key mismatch)
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        <span className="ml-2 font-crimson text-muted-foreground">Loading...</span>
+      </div>
+    );
+  }
 
   const popupQuests = temporaryItems.filter(i => i.type === "popup_quest");
   const hiddenTerritories = temporaryItems.filter(i => i.type === "hidden_territory");
