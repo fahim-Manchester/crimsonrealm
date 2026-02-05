@@ -72,6 +72,54 @@ export function useCampaignSession(campaign: Campaign | null) {
     await supabase.from("projects").update({ time_spent: current + minutes }).eq("id", projectId);
   }, []);
 
+  // Decrement time from a project (for reparenting), floor at 0
+  const decrementProjectMinutes = useCallback(async (projectId: string, minutes: number) => {
+    if (minutes === 0) return;
+    const { data, error } = await supabase
+      .from("projects")
+      .select("time_spent")
+      .eq("id", projectId)
+      .maybeSingle();
+    if (error || !data) return;
+    const current = data.time_spent || 0;
+    const newTime = Math.max(0, current - minutes); // Never go negative
+    await supabase.from("projects").update({ time_spent: newTime }).eq("id", projectId);
+  }, []);
+
+  // Build local children map for descendant calculations
+  const buildLocalChildrenMap = useCallback((itemsList: CampaignItem[]) => {
+    const map = new Map<string, CampaignItem[]>();
+    for (const item of itemsList) {
+      if (!item.parent_item_id) continue;
+      const list = map.get(item.parent_item_id) || [];
+      list.push(item);
+      map.set(item.parent_item_id, list);
+    }
+    return map;
+  }, []);
+
+  // Calculate total time of an item plus all its descendants (in seconds)
+  const getDescendantTotalSeconds = useCallback((itemId: string, itemsList: CampaignItem[]) => {
+    const childrenMap = buildLocalChildrenMap(itemsList);
+    
+    const sumTime = (id: string, visited: Set<string>): number => {
+      if (visited.has(id)) return 0;
+      visited.add(id);
+      
+      const item = itemsList.find(i => i.id === id);
+      if (!item) return 0;
+      
+      let total = item.time_spent || 0;
+      const children = childrenMap.get(id) || [];
+      for (const child of children) {
+        total += sumTime(child.id, visited);
+      }
+      return total;
+    };
+    
+    return sumTime(itemId, new Set());
+  }, [buildLocalChildrenMap]);
+
   // Fetch campaign items
   const fetchItems = useCallback(async () => {
     if (!campaign) return;
@@ -364,12 +412,42 @@ export function useCampaignSession(campaign: Campaign | null) {
     }));
   }, [items, campaign]);
 
-  const setItemParent = useCallback(async (itemId: string, parentItemId: string | null) => {
+  const setItemParent = useCallback(async (itemId: string, parentItemId: string | null): Promise<{ blocked: boolean; reason?: string }> => {
+    // Block if campaign is completed
+    if (campaign?.status === 'completed') {
+      return { blocked: true, reason: 'completed' };
+    }
+
     const item = items.find((i) => i.id === itemId);
-    if (!item) return;
+    if (!item) return { blocked: false };
 
     // Prevent self-parenting and simple cycles
-    if (parentItemId === itemId) return;
+    if (parentItemId === itemId) return { blocked: false };
+
+    // Calculate total time of moved subtree (self + all descendants)
+    const movedTimeSeconds = getDescendantTotalSeconds(itemId, items);
+    const movedTimeMinutes = Math.ceil(movedTimeSeconds / 60);
+
+    // Find old parent's project (if any) - only direct parent that is a Territory
+    const oldParent = item.parent_item_id ? items.find(i => i.id === item.parent_item_id) : null;
+    const oldParentProjectId = oldParent?.project_id || null;
+
+    // Find new parent's project (if any)
+    const newParent = parentItemId ? items.find(i => i.id === parentItemId) : null;
+    const newParentProjectId = newParent?.project_id || null;
+
+    // Sync time changes to source projects only if parents changed and are territories
+    if (oldParentProjectId !== newParentProjectId && movedTimeMinutes > 0) {
+      // Subtract from old parent's source project
+      if (oldParentProjectId) {
+        await decrementProjectMinutes(oldParentProjectId, movedTimeMinutes);
+      }
+
+      // Add to new parent's source project
+      if (newParentProjectId) {
+        await incrementProjectMinutes(newParentProjectId, movedTimeMinutes);
+      }
+    }
 
     await supabase
       .from("campaign_items")
@@ -405,7 +483,9 @@ export function useCampaignSession(campaign: Campaign | null) {
       Promise.all(updates);
       return next;
     });
-  }, [items]);
+
+    return { blocked: false };
+  }, [items, campaign, getDescendantTotalSeconds, decrementProjectMinutes, incrementProjectMinutes]);
 
   // Calculate total campaign time from all item times
   const calculateTotalFromItems = useCallback((itemsList: CampaignItem[], currentTaskTimeSeconds: number = 0) => {
