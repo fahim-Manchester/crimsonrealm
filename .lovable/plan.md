@@ -1,170 +1,125 @@
 
-## What’s actually happening (and why it still “reloads”)
-Based on your description (“black page literally saying ‘reloading’”) and the fact it happens across multiple devices/browsers, this is almost certainly **browser tab discard / process eviction** (Chrome/Edge) or **mobile OS tab eviction** (iOS/Android). When the browser decides the tab is “inactive” and memory is needed, it **kills the page**. When you return, the browser **reloads the whole document**, and you see a “Reloading…” screen.
+## What I believe is still happening (root cause)
+You’re right to be upset: even if we can’t *stop* a browser/phone from killing an inactive tab, we must make sure that when it comes back:
 
-Important implication:
-- This is **not** React Query refetch behavior.
-- This is **not** the campaign timer drift bug (we fixed correctness via timestamps).
-- It is a **true page reload initiated by the browser/OS**. We cannot fully prevent the browser from discarding a tab.
+- you don’t lose your “unsaved” work (like the campaign creator selections / quick-add list)
+- you don’t get dumped back to `/` and forced to manually navigate back
 
-What we *can* do (and what users will experience as “fixed”):
-- Make Campaign Mode (and other key flows) **survive a full reload** by **persisting UI state**, **rehydrating immediately**, and **committing time deltas safely** so you don’t lose progress.
-- Ensure that when a reload happens, the app **restores exactly where you were** with the timer still correct, and the campaign builder draft still there.
+From the code I inspected, there is a concrete bug that explains why “I was building a campaign and switched tabs → came back → everything was gone” can still happen:
 
-## Goals for the fix
-1. **Campaign timers remain correct** even if the browser discards the tab and reloads.
-2. **Campaign session page restores itself** after reload:
-   - Same campaign
-   - Same selected task
-   - Timer running state restored
-   - No lost time (best-effort commit)
-3. **Campaign Creator (new campaign dialog) does not lose work** if a reload happens:
-   - Name, difficulty, planned hours
-   - Selected tasks/projects
-   - Quick-add temporary items and in-progress quick-add text fields
-4. Reduce “feels like a reload” events caused by our own code:
-   - **Stop auto-navigating inside `useAuth`** (this can cause unexpected route changes/flicker that look like a “reset”)
-   - Use a proper route guard instead
+### Key bug: Campaign Creator draft key changes after auth loads
+In `CampaignCreator.tsx` we currently do:
 
----
+- if `user` is not ready yet: key = `campaignCreatorDraft:anonymous`
+- after auth finishes: key becomes `campaignCreatorDraft:<userId>`
 
-## Implementation plan (code changes)
+But `useLocalStorageState()` **only hydrates from localStorage on the first render**. It does *not* re-hydrate when the `key` changes later.
 
-### 1) Fix auth flow so it doesn’t cause “jumping”/resets on focus
-**Why:** `useAuth` currently calls `navigate("/auth?mode=login")` whenever session is null. During initialization or token refresh transitions, this can cause route jumps that feel like reload/resets.
+So the common lifecycle is:
+1. page reload happens → auth is still loading → `user` is null
+2. CampaignCreator mounts → loads draft from `campaignCreatorDraft:anonymous` (often empty)
+3. a moment later auth resolves → key changes to `campaignCreatorDraft:<userId>`
+4. the hook **does not reload from the new key** → draft appears “lost”
 
-**Changes:**
-- Update `src/hooks/useAuth.ts` to become a **pure state hook**:
-  - Keep `user`, `session`, `loading`
-  - **Remove all `navigate(...)` calls**
-  - Ensure initialization order is correct:
-    - subscribe to `onAuthStateChange` first
-    - then `getSession()`
-- Add a small `RequireAuth` wrapper component (e.g. `src/components/auth/RequireAuth.tsx`) that:
-  - If `loading`: show spinner
-  - If no session: `<Navigate to="/auth?mode=login" replace />`
-  - Else: render children
+This matches your video description very well: after reload, the UI is back but your in-progress list/draft is missing.
 
-**Update routing:**
-- In `src/App.tsx`, wrap protected routes:
-  - `/home`, `/campaigns`, `/campaigns/:id`, `/tasks`, `/projects`, `/resources`, `/diary`, `/settings`, `/achievements`
-- Keep `/` and `/auth` public.
+## What we will change
+We’ll address the problem in two layers:
 
-**Result:** even if auth token refresh happens after tab return, the app won’t “randomly” route away due to the hook side-effect.
+### Layer A — Make the Campaign Creator draft truly survive reloads (fix key-change hydration)
+**Goal:** if a reload happens at any time, your campaign draft and quick-add list come back exactly as you left them.
 
----
+#### A1) Fix `useLocalStorageState` to re-hydrate when the key changes
+We will update `src/hooks/useLocalStorageState.ts` to:
+- detect when `key` changes (e.g., anonymous → user-specific)
+- immediately attempt to load the new key’s stored value
+- if found, replace the in-memory state with the stored state
 
-### 2) Accept that true reloads can happen, and make Campaign Session restore perfectly
-We already store timer state in localStorage (`campaignTimer:<campaignId>`) and compute elapsed from timestamps. That’s good, but two additions will make it resilient to real reloads and reduce loss:
+Important detail:
+- We must avoid overwriting the “real” user draft with an empty anonymous draft during the transition.
+- We’ll implement a “key migration” approach:
+  - If key changes and the new key has no stored value, but the old key *did* have a stored value, we can copy it forward once (optional but recommended).
 
-#### 2a) Persist “where I was” in the session (not just timerState)
-**Add to Campaign Session persistence:**
-- `campaignId`
-- `currentTaskIndex` (already in timerState)
-- optionally `scroll position` or “expanded UI state” if needed later
+#### A2) Stop using the `anonymous` fallback key for drafts that matter
+In `CampaignCreator.tsx`, we’ll do one of these (recommended option first):
 
-We already persist timerState; ensure we persist:
-- on `visibilitychange` hidden
-- on `pagehide` (more reliable than beforeunload on mobile)
-- on `beforeunload` (best effort)
+**Recommended**: Don’t render the draft-backed UI until auth is resolved
+- If `useAuth().loading` is true, show a small loading state inside the dialog instead of initializing the draft with an anonymous key.
+- Once we have the user id, we mount the form with the correct key from the start.
 
-**Files:**
-- `src/hooks/useCampaignSession.ts`
+This prevents “draft initialized under the wrong key” entirely.
 
-#### 2b) Periodic “commit deltas” while running (optional but recommended)
-**Why:** If you work for 90 minutes without pausing/switching tasks, and then the browser kills the tab, you’ll rehydrate fine from localStorage, but you may still want backend totals to stay reasonably current.
-
-Add a low-frequency commit (example: every 60–120 seconds while running *and visible*, or on hidden/pagehide):
-- compute elapsed seconds for current task since last commit
-- write delta to the campaign_item and source entities using timestamp-derived deltas
-- update a `lastCommittedAt` in localStorage so we only commit the delta once
-
-This protects against:
-- losing localStorage (rare but possible)
-- users switching devices mid-session
-
-**Files:**
-- `src/hooks/useCampaignSession.ts`
+#### A3) Add an explicit “Draft restored” indicator (small UX improvement)
+When we load a non-empty draft after a reload, show a small toast like:
+- “Draft restored” (only once per mount)
+This reduces the confusion and gives reassurance after the browser “reloading” screen.
 
 ---
 
-### 3) Persist Campaign Creator draft so a reload doesn’t wipe your work
-**Why:** Campaign creation currently uses local component state only. A real browser reload will wipe it.
+### Layer B — If the browser reload dumps the user to `/`, automatically resume the last protected route
+**Goal:** even if the browser/OS reloads and the user lands at `/`, the app should take them back to where they were (especially the active campaign timer).
 
-**Approach:**
-- Add a “draft state” saved to localStorage under a stable key:
-  - `campaignCreatorDraft:<userId>` (or `:<userId>:v1` for migrations)
-- Persist:
-  - `campaignName`, `difficulty`, `plannedHours`
-  - `selectedTasks`, `selectedProjects`
-  - `temporaryItems`
-  - quick-add inputs: `questTitle`, `questDescription`, `territoryName`, `territoryDescription`
-  - `activeTab` in the creator (tasks/territories/quick)
+You already approved “Auto resume”, so we’ll implement that.
 
-**Implementation details:**
-- Create a small reusable hook:
-  - `useLocalStorageState<T>(key, initialValue, options?)`
-  - It should:
-    - hydrate on mount
-    - write on changes (debounced ~150–300ms to avoid excessive writes)
-- In `CampaignCreator`:
-  - replace `useState(...)` for draft fields with `useLocalStorageState(...)`
-  - provide a “Clear draft” button inside the dialog (so the user can discard)
-  - automatically clear the draft on successful campaign creation and close
+#### B1) Add auto-resume logic on `Index` (`/`)
+We’ll update `src/pages/Index.tsx` so that:
+- if a session exists, read `lastRoute:<userId>` from localStorage
+- if that route exists and is not `/auth`, navigate there automatically
+- fallback: navigate to `/home`
 
-**Files:**
-- `src/components/campaigns/CampaignCreator.tsx`
-- `src/hooks/useLocalStorageState.ts` (new)
+We’ll do this safely:
+- wait until `useAuth().loading` is false
+- avoid loops (don’t redirect if lastRoute is already `/`)
+
+This directly addresses why you’re currently on route `/` after the issue.
+
+#### B2) Add a “Resume now” button as a backup (optional but useful)
+Even with auto-resume, we can also show a “Resume where you left off” button for accessibility and as a fallback if navigation is blocked.
 
 ---
 
-### 4) Restore last visited page (optional but strongly improves “it forgot where I was”)
-If the browser reloads, it normally reloads at the same URL. But in some cases (auth redirects, open-at-root flows), you can end up back at `/`.
+## Why this “fixes it” in practical user terms (even though browsers can still reload)
+We cannot force Chrome/iOS to keep a background tab alive for hours. But after these changes, a reload becomes effectively harmless:
+- your campaign timer resumes accurately (timestamp-authoritative)
+- your campaign-creation draft and quick-add list do not disappear
+- you don’t get stranded on `/`
 
-To improve this:
-- Track last “protected route” visited in localStorage:
-  - key: `lastRoute:<userId>`
-- On app start:
-  - if user has a session and current route is `/` (landing page), offer an automatic redirect or a “Resume” button/toast that takes you back.
+That’s what makes the app feel like it “didn’t reload” from the user’s perspective.
 
-**Files:**
-- `src/App.tsx` (or a small `RoutePersistence` component)
-- Possibly a new `src/components/system/ResumeLastRouteToast.tsx`
+## Files we will modify
+1. `src/hooks/useLocalStorageState.ts`
+   - add key-change rehydration (and optional migration from old key → new key)
 
----
+2. `src/components/campaigns/CampaignCreator.tsx`
+   - avoid initializing draft with `anonymous` key (wait for auth), or rely on the improved hook
+   - optional: “Draft restored” toast behavior
 
-## Acceptance tests (what we’ll verify)
-1. **Campaign Session – tab discard simulation**
-   - Start a campaign session timer
-   - Switch away for 30–90 minutes (ACTUALLY I WANT IT POSSIBLE FOR A USER TO SWITCH AWAY FROM THE TAB/BROWSER FOR A FEW HOURS ON END)
-   - Return:
-     - if the browser reloads the page, the app should come back with:
-       - same campaign page
-       - timer still running and showing correct elapsed time immediately
-       - current task index preserved
-2. **Campaign Creator draft**
-   - Open Campaign Creator dialog
-   - Fill name, select tasks, add quick items
-   - Switch tabs for a while; if reload occurs:
-     - reopening the dialog shows the draft exactly as left
-3. **Auth stability**
-   - Switch tabs repeatedly:
-     - no unexpected jumps to `/auth` unless genuinely signed out
-     - no flicker-loop routing behavior
+3. `src/pages/Index.tsx`
+   - if already signed in, auto-resume to lastRoute or /home
 
----
+(We may also lightly adjust `useAuth` usage in Index/CampaignCreator to use the existing `loading` flag correctly.)
+
+## Acceptance tests (what you should be able to do after the fix)
+### Test 1: Campaign Creator draft survives a reload
+1. Go to Campaigns → Create Campaign
+2. Select tasks/territories, add multiple Quick Add items
+3. Switch tabs for a while (long enough to trigger your “Reloading…” behavior)
+4. Come back:
+   - If the browser reloads, reopen the campaign creator:
+   - Your selections + quick-add list are still there
+
+### Test 2: If you land on `/` after reload, the app resumes automatically
+1. Start a timer or open Campaigns
+2. Switch away long enough to trigger a reload
+3. Come back:
+   - if you land on `/`, within a moment it navigates you back to where you were
+
+### Test 3: Timer still shows hours correctly
+1. Start campaign timer
+2. Leave laptop for 2–4 hours (sleep/lock is fine)
+3. Come back:
+   - timer reflects elapsed time (based on timestamps), even if the page had to reload
 
 ## Notes / constraints (being direct)
-- We cannot guarantee “it will never reload for hours” because browsers/phones can and do discard background tabs.
-- What we *can* guarantee is: **if it reloads, you don’t lose your place or your time.** That’s the practical fix that makes the app usable as a “non-distracting” companion.
-
----
-
-## Files we expect to touch
-- `src/hooks/useAuth.ts` (remove navigation side-effects; stabilize auth state)
-- `src/App.tsx` (protected routes via `RequireAuth`; optional resume-last-route)
-- `src/components/auth/RequireAuth.tsx` (new)
-- `src/hooks/useCampaignSession.ts` (add `pagehide`, optional periodic commit, ensure robust hydration)
-- `src/components/campaigns/CampaignCreator.tsx` (persist draft state)
-- `src/hooks/useLocalStorageState.ts` (new)
-
+- If the browser kills the tab, you may still see a brief “Reloading…” screen (that’s outside our control).
+- The fix here ensures the reload does not cost users work, time accuracy, or navigation context—so the app remains a helper, not a leash.
