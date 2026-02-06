@@ -25,22 +25,23 @@ interface SortableTaskItemProps {
   isDragActive?: boolean;
 }
 
-const formatTime = (seconds: number | null) => {
-  if (!seconds || seconds === 0) return "";
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (mins === 0) return `${secs}s`;
-  return `${mins}m ${secs}s`;
+// Always show HH:MM:SS format for accurate time tracking
+const formatTimeHMS = (seconds: number | null) => {
+  if (!seconds || seconds === 0) return "00:00:00";
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
 };
 
-const formatTimeMinutes = (seconds: number | null) => {
-  if (!seconds || seconds === 0) return "—";
-  const mins = Math.ceil(seconds / 60);
-  const hours = Math.floor(mins / 60);
-  const remainingMins = mins % 60;
-  if (hours === 0) return `${remainingMins}m`;
-  if (remainingMins === 0) return `${hours}h`;
-  return `${hours}h ${remainingMins}m`;
+// Short format for session time increment display
+const formatTimeShort = (seconds: number | null) => {
+  if (!seconds || seconds === 0) return "";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(mins)}:${pad(secs)}`;
 };
 
 export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps>(function SortableTaskItem({ 
@@ -295,12 +296,10 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
             </div>
           ) : (
             <>
-              {totalTimeSpent > 0 && (
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {formatTimeMinutes(totalTimeSpent)}{showAggregatedTime ? " total" : ""}
-                </span>
-              )}
+              <span className="text-xs text-muted-foreground flex items-center gap-1 font-mono">
+                <Clock className="w-3 h-3" />
+                {totalTimeSpent > 0 ? formatTimeHMS(totalTimeSpent) : "00:00:00"}{showAggregatedTime ? " total" : ""}
+              </span>
               {onUpdateTime && !isCurrentTask && (
                 <Button
                   size="icon"
@@ -318,7 +317,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
         {/* Session time indicator for current task */}
         {isCurrentTask && sessionTimeSeconds > 0 && (
           <span className="text-xs text-primary font-mono">
-            +{formatTime(sessionTimeSeconds)}
+            +{formatTimeShort(sessionTimeSeconds)}
           </span>
         )}
       
