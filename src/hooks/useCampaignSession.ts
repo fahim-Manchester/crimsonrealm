@@ -576,7 +576,8 @@ export function useCampaignSession(campaign: Campaign | null) {
   }, [timerState, campaign]);
 
   // Switch to a different task - ONLY affects timing if timer is running
-  // FIXED: Add guards to prevent double-counting and hallucinated time
+  // FIXED: Remove DB saves from switchToTask - let endSession handle ALL persistence
+  // This prevents double-saving and ensures time is never lost
   const switchToTask = useCallback(async (newTaskId: string) => {
     const currentItems = itemsRef.current;
     const newItem = currentItems.find(i => i.id === newTaskId);
@@ -596,40 +597,22 @@ export function useCampaignSession(campaign: Campaign | null) {
       return;
     }
     
-    // Timer IS running - commit time to current item before switching
+    // Timer IS running - commit time to itemAccumulatedMs (NO DB saves here!)
+    // All DB persistence happens in endSession/startNewSession
     const currentItem = currentState.timedTaskId 
       ? currentItems.find(i => i.id === currentState.timedTaskId)
       : null;
     
     const now = Date.now();
-    
-    // Only save time if we were timing a different task
-    if (currentItem && currentItem.id !== newTaskId) {
-      const taskElapsedMs = currentState.taskAccumulatedMs + (now - currentState.runningSinceMs);
-      const taskElapsedSeconds = Math.floor(taskElapsedMs / 1000);
-      
-      // Save time for current item before switching
-      if (taskElapsedSeconds > 0) {
-        await saveItemTime(currentItem, taskElapsedSeconds);
-        
-        // Update local item with new time
-        setItems(prev => prev.map(item => 
-          item.id === currentItem.id 
-            ? { ...item, time_spent: (item.time_spent || 0) + taskElapsedSeconds } 
-            : item
-        ));
-      }
-    }
-    
-    // Calculate session elapsed to accumulate before resetting
     const sessionElapsedMs = now - currentState.runningSinceMs;
     const newItemAccumulatedMs = timerStateRef.current.itemAccumulatedMs[newTaskId] || 0;
     
-    // Switch to new task - reset runningSinceMs to now, commit old item time to itemAccumulatedMs
+    // Switch to new task - commit old task time to itemAccumulatedMs, reset for new task
     setTimerState(prev => {
       const updatedItemAccumulatedMs = { ...prev.itemAccumulatedMs };
       
-      // Commit the running time for the old item
+      // Commit the running time for the old item to itemAccumulatedMs ONLY
+      // This ensures time is tracked but NOT saved to DB until endSession
       if (currentItem && prev.runningSinceMs) {
         updatedItemAccumulatedMs[currentItem.id] = 
           (prev.itemAccumulatedMs[currentItem.id] || 0) + (now - prev.runningSinceMs);
@@ -646,7 +629,7 @@ export function useCampaignSession(campaign: Campaign | null) {
     });
     
     setSelectedTaskId(newTaskId);
-  }, [saveItemTime]);
+  }, []);
 
   // Complete current task and move to next uncompleted
   const completeCurrentTask = useCallback(async () => {
@@ -907,30 +890,54 @@ export function useCampaignSession(campaign: Campaign | null) {
   }, []);
 
   // End session and save time to database
+  // FIXED: Save ALL accumulated item times, not just the current task
+  // This ensures time is never lost when switching between tasks during a session
   const endSession = useCallback(async () => {
-    pauseTimer();
-    
     if (!campaign) return 0;
 
+    // Get current state BEFORE pausing (so we can compute running time)
     const currentState = timerStateRef.current;
     const currentItems = itemsRef.current;
-    const currentTaskTimeSeconds = Math.floor(currentState.taskAccumulatedMs / 1000);
-
-    const currentItem = currentState.timedTaskId 
-      ? currentItems.find(i => i.id === currentState.timedTaskId)
-      : null;
-      
-    if (currentItem && currentTaskTimeSeconds > 0) {
-      await saveItemTime(currentItem, currentTaskTimeSeconds);
+    const now = Date.now();
+    
+    // Compute final accumulated values inline (including any running time)
+    // This ensures we don't lose time due to async state updates
+    const elapsedSinceStart = currentState.isRunning && currentState.runningSinceMs 
+      ? now - currentState.runningSinceMs 
+      : 0;
+    
+    // Build final itemAccumulatedMs with running time added for current task
+    const finalItemAccumulatedMs = { ...currentState.itemAccumulatedMs };
+    if (currentState.timedTaskId && elapsedSinceStart > 0) {
+      finalItemAccumulatedMs[currentState.timedTaskId] = 
+        (finalItemAccumulatedMs[currentState.timedTaskId] || 0) + elapsedSinceStart;
     }
-
-    const updatedItems = currentItem && currentTaskTimeSeconds > 0
-      ? currentItems.map(item => 
-          item.id === currentItem.id 
-            ? { ...item, time_spent: (item.time_spent || 0) + currentTaskTimeSeconds }
-            : item
-        )
-      : currentItems;
+    
+    // Now pause the timer (clears running state)
+    pauseTimer();
+    
+    // Save time for ALL items that accumulated time this session
+    let updatedItems = [...currentItems];
+    for (const [itemId, accumulatedMs] of Object.entries(finalItemAccumulatedMs)) {
+      const timeSeconds = Math.floor(accumulatedMs / 1000);
+      if (timeSeconds <= 0) continue;
+      
+      const item = currentItems.find(i => i.id === itemId);
+      if (!item) continue;
+      
+      // Save to database
+      await saveItemTime(item, timeSeconds);
+      
+      // Update local items array
+      updatedItems = updatedItems.map(i => 
+        i.id === itemId 
+          ? { ...i, time_spent: (i.time_spent || 0) + timeSeconds }
+          : i
+      );
+    }
+    
+    // Update local state with all the saved times
+    setItems(updatedItems);
     
     const newTotalTime = calculateTotalFromItems(updatedItems, 0);
     const newSessionCount = (campaign.session_count || 0) + 1;
@@ -949,34 +956,54 @@ export function useCampaignSession(campaign: Campaign | null) {
 
     clearTimerState(campaign.id);
 
-    return Math.floor((currentState.sessionAccumulatedMs) / 60000);
+    const finalSessionMs = currentState.sessionAccumulatedMs + elapsedSinceStart;
+    return Math.floor(finalSessionMs / 60000);
   }, [campaign, pauseTimer, saveItemTime, calculateTotalFromItems]);
 
   // Start a new session without leaving the page
+  // FIXED: Save ALL accumulated item times, not just the current task
   const startNewSession = useCallback(async () => {
-    pauseTimer();
-    
     if (!campaign) return;
 
+    // Get current state BEFORE pausing (so we can compute running time)
     const currentState = timerStateRef.current;
     const currentItems = itemsRef.current;
-    const currentTaskTimeSeconds = Math.floor(currentState.taskAccumulatedMs / 1000);
-
-    const currentItem = currentState.timedTaskId 
-      ? currentItems.find(i => i.id === currentState.timedTaskId)
-      : null;
-      
-    if (currentItem && currentTaskTimeSeconds > 0) {
-      await saveItemTime(currentItem, currentTaskTimeSeconds);
+    const now = Date.now();
+    
+    // Compute final accumulated values inline (including any running time)
+    const elapsedSinceStart = currentState.isRunning && currentState.runningSinceMs 
+      ? now - currentState.runningSinceMs 
+      : 0;
+    
+    // Build final itemAccumulatedMs with running time added for current task
+    const finalItemAccumulatedMs = { ...currentState.itemAccumulatedMs };
+    if (currentState.timedTaskId && elapsedSinceStart > 0) {
+      finalItemAccumulatedMs[currentState.timedTaskId] = 
+        (finalItemAccumulatedMs[currentState.timedTaskId] || 0) + elapsedSinceStart;
     }
-
-    const updatedItems = currentItem && currentTaskTimeSeconds > 0
-      ? currentItems.map(item => 
-          item.id === currentItem.id 
-            ? { ...item, time_spent: (item.time_spent || 0) + currentTaskTimeSeconds }
-            : item
-        )
-      : currentItems;
+    
+    // Now pause the timer
+    pauseTimer();
+    
+    // Save time for ALL items that accumulated time this session
+    let updatedItems = [...currentItems];
+    for (const [itemId, accumulatedMs] of Object.entries(finalItemAccumulatedMs)) {
+      const timeSeconds = Math.floor(accumulatedMs / 1000);
+      if (timeSeconds <= 0) continue;
+      
+      const item = currentItems.find(i => i.id === itemId);
+      if (!item) continue;
+      
+      // Save to database
+      await saveItemTime(item, timeSeconds);
+      
+      // Update local items array
+      updatedItems = updatedItems.map(i => 
+        i.id === itemId 
+          ? { ...i, time_spent: (i.time_spent || 0) + timeSeconds }
+          : i
+      );
+    }
     
     const newTotalTime = calculateTotalFromItems(updatedItems, 0);
     const newSessionCount = (campaign.session_count || 0) + 1;
