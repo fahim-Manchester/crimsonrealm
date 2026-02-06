@@ -180,9 +180,8 @@ export function QuestItemList({
               const displaySeconds = aggregatedSecondsById.get(item.id) ?? getOwnSeconds(item);
               const hasChildren = childrenMap.has(item.id);
               
-              // NEW: Use ID-based checks for timing vs selection
+              // SIMPLIFIED: timedTaskId IS the selected task (no dual selection)
               const isBeingTimed = timedTaskId === item.id;
-              const isSelected = selectedTaskId === item.id;
               // Fallback to index-based for backwards compatibility
               const isCurrentByIndex = index === currentIndex;
 
@@ -191,7 +190,7 @@ export function QuestItemList({
                   key={item.id}
                   item={item}
                   isCurrentTask={isBeingTimed || (timedTaskId === undefined && isCurrentByIndex)}
-                  isSelected={isSelected || (selectedTaskId === undefined && isCurrentByIndex)}
+                  isSelected={isBeingTimed || (timedTaskId === undefined && isCurrentByIndex)}
                   isTimerRunning={isTimerRunning}
                   indentLevel={indentLevel}
                   showAggregatedTime={hasChildren}
