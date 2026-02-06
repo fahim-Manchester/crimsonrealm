@@ -1305,9 +1305,9 @@ export function useCampaignSession(campaign: Campaign | null) {
     setSelectedTaskId(taskId);
   }, [items]);
 
-  // FIXED: setCurrentTaskIndex now ONLY updates selection - NEVER auto-switches timer
-  // This is the core fix for "time hallucinating when clicking tasks"
-  // Timer switching should only happen via explicit user actions (Play button, etc.)
+  // FIXED: setCurrentTaskIndex updates selection AND switches timer if running
+  // This is safe now because switchToTask() only commits to memory (not DB)
+  // All DB persistence happens in endSession()
   const setCurrentTaskIndex = useCallback((index: number) => {
     const targetItem = items[index];
     if (!targetItem) return;
@@ -1315,9 +1315,16 @@ export function useCampaignSession(campaign: Campaign | null) {
       return;
     }
     
-    // ONLY update UI selection - never touch timer state
+    // Always update UI selection
     setSelectedTaskId(targetItem.id);
-  }, [items]);
+    
+    // If timer is running on a DIFFERENT task, switch the timer to this task
+    // This commits the old task's time to itemAccumulatedMs and starts timing the new task
+    const currentState = timerStateRef.current;
+    if (currentState.isRunning && currentState.timedTaskId && currentState.timedTaskId !== targetItem.id) {
+      switchToTask(targetItem.id);
+    }
+  }, [items, switchToTask]);
 
   // Initialize
   useEffect(() => {
