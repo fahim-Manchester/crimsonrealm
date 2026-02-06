@@ -10,7 +10,8 @@ import type { CampaignItem } from "@/hooks/useCampaigns";
 
 interface SortableTaskItemProps {
   item: CampaignItem;
-  isCurrentTask: boolean;
+  isCurrentTask: boolean; // Is this the task being timed?
+  isSelected?: boolean; // Is this the task selected in UI? (separate from timing)
   onSelect: () => void;
   onUncheck?: () => void;
   onUpdateTime?: (minutes: number) => void;
@@ -44,7 +45,8 @@ const formatTimeMinutes = (seconds: number | null) => {
 
 export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps>(function SortableTaskItem({ 
   item, 
-  isCurrentTask, 
+  isCurrentTask, // Task being timed
+  isSelected, // Task selected in UI (may differ from isCurrentTask)
   onSelect, 
   onUncheck,
   onUpdateTime,
@@ -57,6 +59,8 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
   nestDropId,
   isDragActive = false
 }, _ref) {
+  // Use isSelected for highlighting if provided, otherwise fall back to isCurrentTask
+  const isHighlighted = isSelected !== undefined ? isSelected : isCurrentTask;
   const [isEditingTime, setIsEditingTime] = useState(false);
   const [editTimeValue, setEditTimeValue] = useState("");
 
@@ -143,7 +147,14 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
   const getItemStyles = () => {
     if (isCompleted) return "bg-accent/10 border-accent/30";
     if (isAbandoned) return "bg-destructive/10 border-destructive/30";
+    
+    // Timed task (actively running) gets strong primary highlight
     if (isCurrentTask) return "border-primary bg-primary/20 ring-2 ring-primary/30";
+    
+    // Selected but not timed task gets subtle highlight
+    if (isHighlighted && !isCurrentTask) {
+      return "border-primary/50 bg-primary/10 ring-1 ring-primary/20";
+    }
     
     // Different styles for each type
     if (isTemporary && item.temporary_type === 'task') {
@@ -172,6 +183,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
           isDragging && "opacity-50 z-50",
           (isCompleted || isAbandoned) && "opacity-60",
           getItemStyles(),
+          // Cursor: pointer for unselected, default for completed/timed
           (isCompleted || isAbandoned || isCurrentTask) ? "cursor-default" : "cursor-pointer"
         )}
         onClick={handleClick}

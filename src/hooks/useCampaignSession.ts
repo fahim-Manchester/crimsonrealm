@@ -7,8 +7,10 @@ export interface SessionState {
   campaignTotalTime: number; // Total time from DB (in minutes)
   sessionTime: number; // Time this session (in seconds)
   taskTime: number; // Time on current task in this session (in seconds)
-  currentTaskIndex: number;
-  currentSessionNumber: number; // Which session we're on
+  currentTaskIndex: number; // Backwards-compatible index for UI
+  currentSessionNumber: number;
+  timedTaskId: string | null; // NEW: The actual task being timed (by ID)
+  selectedTaskId: string | null; // NEW: The task currently selected in UI (separate from timing)
 }
 
 // Track accumulated time per item during this session
@@ -19,11 +21,11 @@ export interface ItemSessionTime {
 // Timestamp-authoritative timer state
 interface TimerState {
   isRunning: boolean;
-  runningSince: number | null;        // Epoch ms when started (null if paused)
-  accumulatedSessionMs: number;       // Session time already counted
-  accumulatedTaskMs: number;          // Current task time already counted
+  runningSinceMs: number | null;        // Epoch ms when started (null if paused)
+  sessionAccumulatedMs: number;         // Session time already counted
+  taskAccumulatedMs: number;            // Current task time already counted
   itemAccumulatedMs: Record<string, number>;  // Per-item accumulated time in ms
-  currentTaskIndex: number;
+  timedTaskId: string | null;           // ID-based: which task is being timed
   currentSessionNumber: number;
 }
 
@@ -44,7 +46,16 @@ const loadTimerState = (campaignId: string): TimerState | null => {
   try {
     const stored = localStorage.getItem(getStorageKey(campaignId));
     if (!stored) return null;
-    return JSON.parse(stored);
+    const parsed = JSON.parse(stored);
+    // Migration: convert old currentTaskIndex-based state to new timedTaskId-based state
+    if (parsed && typeof parsed.currentTaskIndex === 'number' && !parsed.timedTaskId) {
+      // Old format - will be migrated after items load
+      return {
+        ...parsed,
+        timedTaskId: null // Will be set from items
+      };
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -58,20 +69,40 @@ const clearTimerState = (campaignId: string) => {
   }
 };
 
+const createDefaultTimerState = (sessionNumber: number): TimerState => ({
+  isRunning: false,
+  runningSinceMs: null,
+  sessionAccumulatedMs: 0,
+  taskAccumulatedMs: 0,
+  itemAccumulatedMs: {},
+  timedTaskId: null,
+  currentSessionNumber: sessionNumber
+});
+
 export function useCampaignSession(campaign: Campaign | null) {
   const [items, setItems] = useState<CampaignItem[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Separate UI selection from timing - selecting a task does NOT start timing!
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  
   // Timestamp-authoritative timer state
-  const [timerState, setTimerState] = useState<TimerState>(() => ({
-    isRunning: false,
-    runningSince: null,
-    accumulatedSessionMs: 0,
-    accumulatedTaskMs: 0,
-    itemAccumulatedMs: {},
-    currentTaskIndex: 0,
-    currentSessionNumber: (campaign?.session_count || 0) + 1
-  }));
+  const [timerState, setTimerState] = useState<TimerState>(() => 
+    createDefaultTimerState((campaign?.session_count || 0) + 1)
+  );
+  
+  // CRITICAL: Ref for synchronous access in event handlers (fixes stale closure issue)
+  const timerStateRef = useRef(timerState);
+  useEffect(() => { timerStateRef.current = timerState; }, [timerState]);
+  
+  const campaignRef = useRef(campaign);
+  useEffect(() => { campaignRef.current = campaign; }, [campaign]);
+  
+  const itemsRef = useRef(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  
+  // Track whether we've hydrated from localStorage
+  const hydratedRef = useRef(false);
   
   // Tick counter for UI refresh only (not for time tracking)
   const [tick, setTick] = useState(0);
@@ -81,35 +112,46 @@ export function useCampaignSession(campaign: Campaign | null) {
 
   // Compute current session time in seconds (derived from timestamps)
   const sessionTimeSeconds = useMemo(() => {
-    const totalMs = timerState.accumulatedSessionMs + 
-      (timerState.runningSince ? Date.now() - timerState.runningSince : 0);
+    const totalMs = timerState.sessionAccumulatedMs + 
+      (timerState.runningSinceMs ? Date.now() - timerState.runningSinceMs : 0);
     return Math.floor(totalMs / 1000);
-  }, [timerState.accumulatedSessionMs, timerState.runningSince, tick]);
+  }, [timerState.sessionAccumulatedMs, timerState.runningSinceMs, tick]);
 
   // Compute current task time in seconds (derived from timestamps)
   const taskTimeSeconds = useMemo(() => {
-    const totalMs = timerState.accumulatedTaskMs + 
-      (timerState.runningSince ? Date.now() - timerState.runningSince : 0);
+    const totalMs = timerState.taskAccumulatedMs + 
+      (timerState.runningSinceMs ? Date.now() - timerState.runningSinceMs : 0);
     return Math.floor(totalMs / 1000);
-  }, [timerState.accumulatedTaskMs, timerState.runningSince, tick]);
+  }, [timerState.taskAccumulatedMs, timerState.runningSinceMs, tick]);
 
   // Compute per-item session times (derived from timestamps)
   const itemSessionTimes = useMemo(() => {
     const times: ItemSessionTime = {};
-    const currentItem = items[timerState.currentTaskIndex];
+    const timedItem = timerState.timedTaskId ? items.find(i => i.id === timerState.timedTaskId) : null;
     
     for (const [itemId, accumulatedMs] of Object.entries(timerState.itemAccumulatedMs)) {
       times[itemId] = Math.floor(accumulatedMs / 1000);
     }
     
-    // Add running time for current item
-    if (currentItem && timerState.runningSince) {
-      const runningMs = Date.now() - timerState.runningSince;
-      times[currentItem.id] = Math.floor(((timerState.itemAccumulatedMs[currentItem.id] || 0) + runningMs) / 1000);
+    // Add running time for currently timed item
+    if (timedItem && timerState.runningSinceMs) {
+      const runningMs = Date.now() - timerState.runningSinceMs;
+      times[timedItem.id] = Math.floor(((timerState.itemAccumulatedMs[timedItem.id] || 0) + runningMs) / 1000);
     }
     
     return times;
-  }, [items, timerState.currentTaskIndex, timerState.itemAccumulatedMs, timerState.runningSince, tick]);
+  }, [items, timerState.timedTaskId, timerState.itemAccumulatedMs, timerState.runningSinceMs, tick]);
+
+  // Get current task index from timedTaskId (for backwards compatibility)
+  const currentTaskIndex = useMemo(() => {
+    if (!timerState.timedTaskId) {
+      // Fall back to first non-completed item
+      const firstActive = items.findIndex(i => i.status !== 'completed' && i.status !== 'abandoned');
+      return firstActive >= 0 ? firstActive : 0;
+    }
+    const idx = items.findIndex(i => i.id === timerState.timedTaskId);
+    return idx >= 0 ? idx : 0;
+  }, [items, timerState.timedTaskId]);
 
   // Build session state for external consumers (backwards compatible)
   const sessionState: SessionState = useMemo(() => ({
@@ -117,9 +159,20 @@ export function useCampaignSession(campaign: Campaign | null) {
     campaignTotalTime,
     sessionTime: sessionTimeSeconds,
     taskTime: taskTimeSeconds,
-    currentTaskIndex: timerState.currentTaskIndex,
-    currentSessionNumber: timerState.currentSessionNumber
-  }), [timerState.isRunning, timerState.currentTaskIndex, timerState.currentSessionNumber, campaignTotalTime, sessionTimeSeconds, taskTimeSeconds]);
+    currentTaskIndex,
+    currentSessionNumber: timerState.currentSessionNumber,
+    timedTaskId: timerState.timedTaskId,
+    selectedTaskId
+  }), [
+    timerState.isRunning, 
+    timerState.currentSessionNumber, 
+    timerState.timedTaskId,
+    campaignTotalTime, 
+    sessionTimeSeconds, 
+    taskTimeSeconds,
+    currentTaskIndex,
+    selectedTaskId
+  ]);
 
   // UI refresh interval (display only, not for time tracking)
   useEffect(() => {
@@ -136,15 +189,17 @@ export function useCampaignSession(campaign: Campaign | null) {
   const lastCommitRef = useRef<number>(Date.now());
   const COMMIT_INTERVAL_MS = 90_000; // 90 seconds
 
-  // Visibility/focus resync - immediately recompute times when returning to tab
+  // Visibility/focus resync - uses refs to avoid stale closures
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         setTick(t => t + 1); // Force immediate re-render
       } else if (document.visibilityState === 'hidden') {
-        // Commit current state to localStorage on hide
-        if (timerState.isRunning && campaign) {
-          saveTimerState(campaign.id, timerState);
+        // Commit current state to localStorage on hide using REF (not state)
+        const currentState = timerStateRef.current;
+        const currentCampaign = campaignRef.current;
+        if (currentState.isRunning && currentCampaign) {
+          saveTimerState(currentCampaign.id, currentState);
         }
       }
     };
@@ -155,8 +210,10 @@ export function useCampaignSession(campaign: Campaign | null) {
     
     // pagehide is more reliable on mobile than beforeunload
     const handlePageHide = () => {
-      if (timerState.isRunning && campaign) {
-        saveTimerState(campaign.id, timerState);
+      const currentState = timerStateRef.current;
+      const currentCampaign = campaignRef.current;
+      if (currentState.isRunning && currentCampaign) {
+        saveTimerState(currentCampaign.id, currentState);
       }
     };
     
@@ -169,22 +226,23 @@ export function useCampaignSession(campaign: Campaign | null) {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [timerState, campaign]);
+  }, []); // Empty deps - handlers use refs
 
-  // Save state before tab closes (best effort)
+  // Save state before tab closes (best effort) - uses refs
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (timerState.isRunning && campaign) {
-        saveTimerState(campaign.id, timerState);
+      const currentState = timerStateRef.current;
+      const currentCampaign = campaignRef.current;
+      if (currentState.isRunning && currentCampaign) {
+        saveTimerState(currentCampaign.id, currentState);
       }
     };
     
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [timerState, campaign]);
+  }, []); // Empty deps - handler uses refs
 
   // Periodic commit to database while running (every ~90 seconds)
-  // This protects against localStorage loss and syncs across devices
   useEffect(() => {
     if (!timerState.isRunning || !campaign) return;
 
@@ -197,11 +255,16 @@ export function useCampaignSession(campaign: Campaign | null) {
       
       if (msSinceLastCommit < COMMIT_INTERVAL_MS) return;
       
-      // Calculate time to commit for current item
-      const currentItem = items[timerState.currentTaskIndex];
-      if (!currentItem || !timerState.runningSince) return;
+      // Get current item by ID
+      const currentState = timerStateRef.current;
+      const currentItems = itemsRef.current;
+      const currentItem = currentState.timedTaskId 
+        ? currentItems.find(i => i.id === currentState.timedTaskId)
+        : null;
+        
+      if (!currentItem || !currentState.runningSinceMs) return;
 
-      const runningMs = now - timerState.runningSince;
+      const runningMs = now - currentState.runningSinceMs;
       const secondsToCommit = Math.floor(runningMs / 1000);
       
       if (secondsToCommit < 60) return; // Only commit if at least 1 minute elapsed
@@ -221,56 +284,87 @@ export function useCampaignSession(campaign: Campaign | null) {
           : item
       ));
       
-      // Reset the "runningSince" to now and accumulate the committed time
-      setTimerState(prev => ({
-        ...prev,
-        runningSince: now,
-        accumulatedTaskMs: prev.accumulatedTaskMs + runningMs,
-        accumulatedSessionMs: prev.accumulatedSessionMs + runningMs,
-        itemAccumulatedMs: {
-          ...prev.itemAccumulatedMs,
-          [currentItem.id]: (prev.itemAccumulatedMs[currentItem.id] || 0) + runningMs
+      // Reset the "runningSinceMs" to now and update accumulated values
+      // IMPORTANT: Use functional update to get latest state
+      setTimerState(prev => {
+        const newState: TimerState = {
+          ...prev,
+          runningSinceMs: now,
+          // Don't double-count: the runningMs is already in the derived values
+          // We only need to reset the anchor
+          itemAccumulatedMs: {
+            ...prev.itemAccumulatedMs,
+            [currentItem.id]: (prev.itemAccumulatedMs[currentItem.id] || 0) + runningMs
+          }
+        };
+        
+        // Save to localStorage with the new state
+        const currentCampaign = campaignRef.current;
+        if (currentCampaign) {
+          saveTimerState(currentCampaign.id, newState);
         }
-      }));
+        
+        return newState;
+      });
       
       lastCommitRef.current = now;
-      
-      // Also save to localStorage
-      if (campaign) {
-        saveTimerState(campaign.id, timerState);
-      }
     }, 30_000); // Check every 30 seconds
     
     return () => clearInterval(intervalId);
-  }, [timerState.isRunning, timerState.runningSince, timerState.currentTaskIndex, campaign, items]);
+  }, [timerState.isRunning, campaign?.id]);
 
-  // Hydrate timer state on mount (restore from localStorage if running)
+  // Hydrate timer state on mount - BEFORE items fetch
   useEffect(() => {
-    if (!campaign) return;
+    if (!campaign || hydratedRef.current) return;
     
     const saved = loadTimerState(campaign.id);
-    if (saved && saved.isRunning && saved.runningSince) {
-      // Timer was running when page closed - restore it
-      setTimerState(saved);
-      setTick(t => t + 1); // Trigger immediate calculation
+    if (saved) {
+      // Validate: if runningSinceMs is more than 24 hours ago, clear it
+      // This prevents massive time jumps from stale localStorage
+      if (saved.runningSinceMs && (Date.now() - saved.runningSinceMs > 24 * 60 * 60 * 1000)) {
+        // Stale running state - pause it and accumulate what we can reasonably estimate
+        const staleMs = Date.now() - saved.runningSinceMs;
+        console.warn(`Timer was running for ${Math.floor(staleMs / 3600000)}h - clearing stale state`);
+        const clearedState = {
+          ...saved,
+          isRunning: false,
+          runningSinceMs: null,
+          // Don't add the stale time - it's likely a mistake
+        };
+        setTimerState(clearedState);
+        clearTimerState(campaign.id);
+      } else if (saved.isRunning && saved.runningSinceMs) {
+        // Valid running state - restore it
+        setTimerState(saved);
+        setTick(t => t + 1); // Trigger immediate calculation
+      } else {
+        // Paused state - restore accumulated values
+        setTimerState(saved);
+      }
+      
+      // Set selected task to match timed task initially
+      if (saved.timedTaskId) {
+        setSelectedTaskId(saved.timedTaskId);
+      }
     }
+    hydratedRef.current = true;
   }, [campaign?.id]);
 
   const findParentProjectId = useCallback((item: CampaignItem) => {
-    // If this item is nested under a territory (project item), attribute time to that territory.
+    const currentItems = itemsRef.current;
     const guard = new Set<string>();
     let cursor: CampaignItem | undefined = item;
     while (cursor?.parent_item_id) {
       if (guard.has(cursor.id)) break;
       guard.add(cursor.id);
 
-      const parent = items.find((i) => i.id === cursor!.parent_item_id);
+      const parent = currentItems.find((i) => i.id === cursor!.parent_item_id);
       if (!parent) break;
       if (parent.project_id) return parent.project_id;
       cursor = parent;
     }
     return null;
-  }, [items]);
+  }, []);
 
   const incrementTaskMinutes = useCallback(async (taskId: string, minutes: number) => {
     if (minutes === 0) return;
@@ -306,7 +400,7 @@ export function useCampaignSession(campaign: Campaign | null) {
       .maybeSingle();
     if (error || !data) return;
     const current = data.time_spent || 0;
-    const newTime = Math.max(0, current - minutes); // Never go negative
+    const newTime = Math.max(0, current - minutes);
     await supabase.from("projects").update({ time_spent: newTime }).eq("id", projectId);
   }, []);
 
@@ -344,7 +438,7 @@ export function useCampaignSession(campaign: Campaign | null) {
     return sumTime(itemId, new Set());
   }, [buildLocalChildrenMap]);
 
-  // Fetch campaign items
+  // Fetch campaign items - does NOT override timedTaskId from localStorage
   const fetchItems = useCallback(async () => {
     if (!campaign) return;
     
@@ -369,72 +463,38 @@ export function useCampaignSession(campaign: Campaign | null) {
       }));
       setItems(mappedItems);
       
-      // Calculate campaign total from all item times (more accurate than campaign.time_spent)
+      // Calculate campaign total from all item times
       const totalSeconds = mappedItems.reduce((sum, item) => sum + (item.time_spent || 0), 0);
       const totalMinutes = Math.ceil(totalSeconds / 60);
-      
-      // Find first non-completed item as initial index
-      const firstActiveIndex = mappedItems.findIndex(
-        item => item.status !== 'completed' && item.status !== 'abandoned'
-      );
-      
       setCampaignTotalTime(totalMinutes);
-      setTimerState(prev => ({ 
-        ...prev, 
-        currentTaskIndex: firstActiveIndex >= 0 ? firstActiveIndex : prev.currentTaskIndex
-      }));
+      
+      // Validate timedTaskId still exists - if not, clear it
+      setTimerState(prev => {
+        if (prev.timedTaskId) {
+          const stillExists = mappedItems.find(i => i.id === prev.timedTaskId);
+          if (!stillExists) {
+            // Task was deleted, find first active task
+            const firstActive = mappedItems.find(i => i.status !== 'completed' && i.status !== 'abandoned');
+            return {
+              ...prev,
+              timedTaskId: firstActive?.id || null,
+              taskAccumulatedMs: 0 // Reset since task no longer exists
+            };
+          }
+        }
+        return prev;
+      });
+      
+      // If no selected task yet, select first active
+      if (!selectedTaskId) {
+        const firstActive = mappedItems.find(i => i.status !== 'completed' && i.status !== 'abandoned');
+        if (firstActive) {
+          setSelectedTaskId(firstActive.id);
+        }
+      }
     }
     setLoading(false);
-  }, [campaign]);
-
-  // Start timer (timestamp-authoritative)
-  const startTimer = useCallback(() => {
-    if (timerState.isRunning) return;
-    
-    const now = Date.now();
-    const newState: TimerState = {
-      ...timerState,
-      isRunning: true,
-      runningSince: now
-    };
-    
-    setTimerState(newState);
-    
-    // Save to localStorage immediately
-    if (campaign) {
-      saveTimerState(campaign.id, newState);
-    }
-  }, [timerState, campaign]);
-
-  // Pause timer (timestamp-authoritative)
-  const pauseTimer = useCallback(() => {
-    if (!timerState.isRunning || !timerState.runningSince) {
-      setTimerState(prev => ({ ...prev, isRunning: false }));
-      return;
-    }
-    
-    const now = Date.now();
-    const elapsedSinceStart = now - timerState.runningSince;
-    const currentItem = items[timerState.currentTaskIndex];
-    const currentItemId = currentItem?.id;
-    
-    setTimerState(prev => ({
-      ...prev,
-      isRunning: false,
-      runningSince: null,
-      accumulatedSessionMs: prev.accumulatedSessionMs + elapsedSinceStart,
-      accumulatedTaskMs: prev.accumulatedTaskMs + elapsedSinceStart,
-      itemAccumulatedMs: currentItemId ? {
-        ...prev.itemAccumulatedMs,
-        [currentItemId]: (prev.itemAccumulatedMs[currentItemId] || 0) + elapsedSinceStart
-      } : prev.itemAccumulatedMs
-    }));
-    
-    // Clear from localStorage
-    if (campaign) {
-      clearTimerState(campaign.id);
-    }
-  }, [timerState, items, campaign]);
+  }, [campaign, selectedTaskId]);
 
   // Save time for a specific item to both campaign_item and its source (task/project)
   const saveItemTime = useCallback(async (item: CampaignItem, timeSpentSeconds: number) => {
@@ -456,64 +516,144 @@ export function useCampaignSession(campaign: Campaign | null) {
     // If it's a project, add time to the project's time_spent
     if (item.project_id) await incrementProjectMinutes(item.project_id, timeSpentMinutes);
 
-    // If it's nested under a territory, also attribute time to that territory (main db)
+    // If it's nested under a territory, also attribute time to that territory
     const parentProjectId = findParentProjectId(item);
     if (parentProjectId) await incrementProjectMinutes(parentProjectId, timeSpentMinutes);
   }, [findParentProjectId, incrementProjectMinutes, incrementTaskMinutes]);
 
-  // Switch to a different task (seamless switch, saves current task time)
-  const switchToTask = useCallback(async (newIndex: number) => {
-    const currentItem = items[timerState.currentTaskIndex];
-    const now = Date.now();
+  // Start timer on currently selected task (or specified task)
+  const startTimer = useCallback((taskId?: string) => {
+    if (timerState.isRunning) return;
     
-    // Calculate time spent on current task using timestamps
-    const taskElapsedMs = timerState.accumulatedTaskMs + 
-      (timerState.runningSince ? now - timerState.runningSince : 0);
-    const taskElapsedSeconds = Math.floor(taskElapsedMs / 1000);
-    
-    // Save time for current item before switching
-    if (currentItem && taskElapsedSeconds > 0) {
-      await saveItemTime(currentItem, taskElapsedSeconds);
-      
-      // Update local item with new time
-      setItems(prev => prev.map(item => 
-        item.id === currentItem.id 
-          ? { ...item, time_spent: (item.time_spent || 0) + taskElapsedSeconds } 
-          : item
-      ));
+    const targetTaskId = taskId || selectedTaskId;
+    if (!targetTaskId) {
+      // Find first active task
+      const firstActive = items.find(i => i.status !== 'completed' && i.status !== 'abandoned');
+      if (!firstActive) return;
+      setSelectedTaskId(firstActive.id);
     }
     
-    // Get the accumulated time for the new item this session
-    const newItem = items[newIndex];
-    const newItemAccumulatedMs = newItem ? (timerState.itemAccumulatedMs[newItem.id] || 0) : 0;
+    const now = Date.now();
+    const actualTaskId = targetTaskId || items.find(i => i.status !== 'completed' && i.status !== 'abandoned')?.id;
     
-    // Calculate session elapsed to accumulate before resetting runningSince
-    const sessionElapsedMs = timerState.runningSince ? now - timerState.runningSince : 0;
+    if (!actualTaskId) return;
     
-    // Switch to new task, reset task timer but keep session timer running
+    const newState: TimerState = {
+      ...timerState,
+      isRunning: true,
+      runningSinceMs: now,
+      timedTaskId: actualTaskId,
+      // If switching to a different task, reset task time
+      taskAccumulatedMs: timerState.timedTaskId === actualTaskId 
+        ? timerState.taskAccumulatedMs 
+        : (timerState.itemAccumulatedMs[actualTaskId] || 0)
+    };
+    
+    setTimerState(newState);
+    setSelectedTaskId(actualTaskId);
+    
+    // Save to localStorage immediately
+    if (campaign) {
+      saveTimerState(campaign.id, newState);
+    }
+  }, [timerState, selectedTaskId, items, campaign]);
+
+  // Pause timer
+  const pauseTimer = useCallback(() => {
+    if (!timerState.isRunning) {
+      setTimerState(prev => ({ ...prev, isRunning: false }));
+      return;
+    }
+    
+    const now = Date.now();
+    const elapsedSinceStart = timerState.runningSinceMs ? now - timerState.runningSinceMs : 0;
+    const currentItemId = timerState.timedTaskId;
+    
+    const newState: TimerState = {
+      ...timerState,
+      isRunning: false,
+      runningSinceMs: null,
+      sessionAccumulatedMs: timerState.sessionAccumulatedMs + elapsedSinceStart,
+      taskAccumulatedMs: timerState.taskAccumulatedMs + elapsedSinceStart,
+      itemAccumulatedMs: currentItemId ? {
+        ...timerState.itemAccumulatedMs,
+        [currentItemId]: (timerState.itemAccumulatedMs[currentItemId] || 0) + elapsedSinceStart
+      } : timerState.itemAccumulatedMs
+    };
+    
+    setTimerState(newState);
+    
+    // Save paused state (so we can restore accumulated time on reload)
+    if (campaign) {
+      saveTimerState(campaign.id, newState);
+    }
+  }, [timerState, campaign]);
+
+  // Switch to a different task - ONLY affects timing if timer is running
+  const switchToTask = useCallback(async (newTaskId: string) => {
+    const currentItems = itemsRef.current;
+    const newItem = currentItems.find(i => i.id === newTaskId);
+    if (!newItem || newItem.status === 'completed' || newItem.status === 'abandoned') return;
+    
+    const currentState = timerStateRef.current;
+    const currentItem = currentState.timedTaskId 
+      ? currentItems.find(i => i.id === currentState.timedTaskId)
+      : null;
+    
+    const now = Date.now();
+    
+    // Only save time if timer was running on a different task
+    if (currentState.isRunning && currentState.runningSinceMs && currentItem && currentItem.id !== newTaskId) {
+      const taskElapsedMs = currentState.taskAccumulatedMs + (now - currentState.runningSinceMs);
+      const taskElapsedSeconds = Math.floor(taskElapsedMs / 1000);
+      
+      // Save time for current item before switching
+      if (taskElapsedSeconds > 0) {
+        await saveItemTime(currentItem, taskElapsedSeconds);
+        
+        // Update local item with new time
+        setItems(prev => prev.map(item => 
+          item.id === currentItem.id 
+            ? { ...item, time_spent: (item.time_spent || 0) + taskElapsedSeconds } 
+            : item
+        ));
+      }
+    }
+    
+    // Calculate session elapsed to accumulate before resetting
+    const sessionElapsedMs = currentState.runningSinceMs ? now - currentState.runningSinceMs : 0;
+    const newItemAccumulatedMs = timerState.itemAccumulatedMs[newTaskId] || 0;
+    
+    // Switch to new task
     setTimerState(prev => ({
       ...prev,
-      currentTaskIndex: newIndex,
-      accumulatedTaskMs: newItemAccumulatedMs,
-      accumulatedSessionMs: prev.accumulatedSessionMs + sessionElapsedMs,
-      runningSince: prev.isRunning ? now : null,
+      timedTaskId: newTaskId,
+      taskAccumulatedMs: newItemAccumulatedMs,
+      sessionAccumulatedMs: prev.sessionAccumulatedMs + sessionElapsedMs,
+      runningSinceMs: prev.isRunning ? now : null,
       // Mark current item's time as committed
-      itemAccumulatedMs: currentItem ? {
+      itemAccumulatedMs: currentItem && prev.runningSinceMs ? {
         ...prev.itemAccumulatedMs,
-        [currentItem.id]: (prev.itemAccumulatedMs[currentItem.id] || 0) + 
-          (prev.runningSince ? now - prev.runningSince : 0)
+        [currentItem.id]: (prev.itemAccumulatedMs[currentItem.id] || 0) + (now - prev.runningSinceMs)
       } : prev.itemAccumulatedMs
     }));
-  }, [items, timerState, saveItemTime]);
+    
+    setSelectedTaskId(newTaskId);
+  }, [timerState.itemAccumulatedMs, saveItemTime]);
 
   // Complete current task and move to next uncompleted
   const completeCurrentTask = useCallback(async () => {
-    const currentItem = items[timerState.currentTaskIndex];
+    const currentItems = itemsRef.current;
+    const currentState = timerStateRef.current;
+    const currentItem = currentState.timedTaskId 
+      ? currentItems.find(i => i.id === currentState.timedTaskId)
+      : null;
+      
     if (!currentItem) return;
 
     const now = Date.now();
-    const taskElapsedMs = timerState.accumulatedTaskMs + 
-      (timerState.runningSince ? now - timerState.runningSince : 0);
+    const taskElapsedMs = currentState.taskAccumulatedMs + 
+      (currentState.runningSinceMs ? now - currentState.runningSinceMs : 0);
     const timeSpentSeconds = Math.floor(taskElapsedMs / 1000);
 
     // Save time to campaign_item and mark as completed
@@ -522,7 +662,7 @@ export function useCampaignSession(campaign: Campaign | null) {
       .update({ 
         completed: true,
         status: 'completed',
-        completed_session: timerState.currentSessionNumber,
+        completed_session: currentState.currentSessionNumber,
         time_spent: (currentItem.time_spent || 0) + timeSpentSeconds
       })
       .eq("id", currentItem.id);
@@ -537,27 +677,27 @@ export function useCampaignSession(campaign: Campaign | null) {
             ...item, 
             completed: true, 
             status: 'completed',
-            completed_session: timerState.currentSessionNumber,
+            completed_session: currentState.currentSessionNumber,
             time_spent: (item.time_spent || 0) + timeSpentSeconds 
           } 
         : item
     ));
 
     // Find next uncompleted item
-    const updatedItems = items.map(item => 
+    const currentIndex = currentItems.findIndex(i => i.id === currentItem.id);
+    const updatedItems = currentItems.map(item => 
       item.id === currentItem.id ? { ...item, status: 'completed' as const } : item
     );
+    
     const nextActiveIndex = updatedItems.findIndex(
-      (item, idx) => idx > timerState.currentTaskIndex && item.status !== 'completed' && item.status !== 'abandoned'
+      (item, idx) => idx > currentIndex && item.status !== 'completed' && item.status !== 'abandoned'
     );
     
-    // If no next item, try from beginning
-    const firstActiveIndex = nextActiveIndex >= 0 
-      ? nextActiveIndex 
-      : updatedItems.findIndex(item => item.status !== 'completed' && item.status !== 'abandoned');
+    const firstActiveItem = nextActiveIndex >= 0 
+      ? updatedItems[nextActiveIndex]
+      : updatedItems.find(item => item.status !== 'completed' && item.status !== 'abandoned');
 
-    // Calculate session elapsed to accumulate
-    const sessionElapsedMs = timerState.runningSince ? now - timerState.runningSince : 0;
+    const sessionElapsedMs = currentState.runningSinceMs ? now - currentState.runningSinceMs : 0;
 
     // Reset task timer and move to next uncompleted item
     setTimerState(prev => {
@@ -566,23 +706,32 @@ export function useCampaignSession(campaign: Campaign | null) {
       
       return {
         ...prev,
-        accumulatedTaskMs: 0,
-        accumulatedSessionMs: prev.accumulatedSessionMs + sessionElapsedMs,
-        runningSince: prev.isRunning ? now : null,
-        currentTaskIndex: firstActiveIndex >= 0 ? firstActiveIndex : prev.currentTaskIndex,
+        taskAccumulatedMs: 0,
+        sessionAccumulatedMs: prev.sessionAccumulatedMs + sessionElapsedMs,
+        runningSinceMs: prev.isRunning ? now : null,
+        timedTaskId: firstActiveItem?.id || null,
         itemAccumulatedMs: newItemAccumulatedMs
       };
     });
-  }, [items, timerState, saveItemTime]);
+    
+    if (firstActiveItem) {
+      setSelectedTaskId(firstActiveItem.id);
+    }
+  }, [saveItemTime]);
 
   // Abandon current task
   const abandonCurrentTask = useCallback(async () => {
-    const currentItem = items[timerState.currentTaskIndex];
+    const currentItems = itemsRef.current;
+    const currentState = timerStateRef.current;
+    const currentItem = currentState.timedTaskId 
+      ? currentItems.find(i => i.id === currentState.timedTaskId)
+      : null;
+      
     if (!currentItem) return;
 
     const now = Date.now();
-    const taskElapsedMs = timerState.accumulatedTaskMs + 
-      (timerState.runningSince ? now - timerState.runningSince : 0);
+    const taskElapsedMs = currentState.taskAccumulatedMs + 
+      (currentState.runningSinceMs ? now - currentState.runningSinceMs : 0);
     const timeSpentSeconds = Math.floor(taskElapsedMs / 1000);
 
     // Save time and mark as abandoned
@@ -590,7 +739,7 @@ export function useCampaignSession(campaign: Campaign | null) {
       .from("campaign_items")
       .update({ 
         status: 'abandoned',
-        completed_session: timerState.currentSessionNumber,
+        completed_session: currentState.currentSessionNumber,
         time_spent: (currentItem.time_spent || 0) + timeSpentSeconds
       })
       .eq("id", currentItem.id);
@@ -604,26 +753,27 @@ export function useCampaignSession(campaign: Campaign | null) {
         ? { 
             ...item, 
             status: 'abandoned',
-            completed_session: timerState.currentSessionNumber,
+            completed_session: currentState.currentSessionNumber,
             time_spent: (item.time_spent || 0) + timeSpentSeconds 
           } 
         : item
     ));
 
     // Find next uncompleted item
-    const updatedItems = items.map(item => 
+    const currentIndex = currentItems.findIndex(i => i.id === currentItem.id);
+    const updatedItems = currentItems.map(item => 
       item.id === currentItem.id ? { ...item, status: 'abandoned' as const } : item
     );
+    
     const nextActiveIndex = updatedItems.findIndex(
-      (item, idx) => idx > timerState.currentTaskIndex && item.status !== 'completed' && item.status !== 'abandoned'
+      (item, idx) => idx > currentIndex && item.status !== 'completed' && item.status !== 'abandoned'
     );
     
-    const firstActiveIndex = nextActiveIndex >= 0 
-      ? nextActiveIndex 
-      : updatedItems.findIndex(item => item.status !== 'completed' && item.status !== 'abandoned');
+    const firstActiveItem = nextActiveIndex >= 0 
+      ? updatedItems[nextActiveIndex]
+      : updatedItems.find(item => item.status !== 'completed' && item.status !== 'abandoned');
 
-    // Calculate session elapsed to accumulate
-    const sessionElapsedMs = timerState.runningSince ? now - timerState.runningSince : 0;
+    const sessionElapsedMs = currentState.runningSinceMs ? now - currentState.runningSinceMs : 0;
 
     setTimerState(prev => {
       const newItemAccumulatedMs = { ...prev.itemAccumulatedMs };
@@ -631,14 +781,18 @@ export function useCampaignSession(campaign: Campaign | null) {
       
       return {
         ...prev,
-        accumulatedTaskMs: 0,
-        accumulatedSessionMs: prev.accumulatedSessionMs + sessionElapsedMs,
-        runningSince: prev.isRunning ? now : null,
-        currentTaskIndex: firstActiveIndex >= 0 ? firstActiveIndex : prev.currentTaskIndex,
+        taskAccumulatedMs: 0,
+        sessionAccumulatedMs: prev.sessionAccumulatedMs + sessionElapsedMs,
+        runningSinceMs: prev.isRunning ? now : null,
+        timedTaskId: firstActiveItem?.id || null,
         itemAccumulatedMs: newItemAccumulatedMs
       };
     });
-  }, [items, timerState, saveItemTime]);
+    
+    if (firstActiveItem) {
+      setSelectedTaskId(firstActiveItem.id);
+    }
+  }, [saveItemTime]);
 
   // Update item time manually
   const updateItemTimeManually = useCallback(async (itemId: string, newTimeMinutes: number) => {
@@ -657,7 +811,6 @@ export function useCampaignSession(campaign: Campaign | null) {
 
     // Update source task/project with the difference
     if (item.task_id) await incrementTaskMinutes(item.task_id, timeDiffMinutes);
-
     if (item.project_id) await incrementProjectMinutes(item.project_id, timeDiffMinutes);
 
     const parentProjectId = findParentProjectId(item);
@@ -675,12 +828,10 @@ export function useCampaignSession(campaign: Campaign | null) {
       i.id === itemId ? { ...i, time_spent: newTimeSeconds } : i
     ));
 
-    // Update campaign total in session state
     setCampaignTotalTime(newCampaignTotal);
   }, [items, campaign, incrementTaskMinutes, incrementProjectMinutes, findParentProjectId]);
 
   const setItemParent = useCallback(async (itemId: string, parentItemId: string | null): Promise<{ blocked: boolean; reason?: string }> => {
-    // Block if campaign is completed
     if (campaign?.status === 'completed') {
       return { blocked: true, reason: 'completed' };
     }
@@ -688,29 +839,21 @@ export function useCampaignSession(campaign: Campaign | null) {
     const item = items.find((i) => i.id === itemId);
     if (!item) return { blocked: false };
 
-    // Prevent self-parenting and simple cycles
     if (parentItemId === itemId) return { blocked: false };
 
-    // Calculate total time of moved subtree (self + all descendants)
     const movedTimeSeconds = getDescendantTotalSeconds(itemId, items);
     const movedTimeMinutes = Math.ceil(movedTimeSeconds / 60);
 
-    // Find old parent's project (if any) - only direct parent that is a Territory
     const oldParent = item.parent_item_id ? items.find(i => i.id === item.parent_item_id) : null;
     const oldParentProjectId = oldParent?.project_id || null;
 
-    // Find new parent's project (if any)
     const newParent = parentItemId ? items.find(i => i.id === parentItemId) : null;
     const newParentProjectId = newParent?.project_id || null;
 
-    // Sync time changes to source projects only if parents changed and are territories
     if (oldParentProjectId !== newParentProjectId && movedTimeMinutes > 0) {
-      // Subtract from old parent's source project
       if (oldParentProjectId) {
         await decrementProjectMinutes(oldParentProjectId, movedTimeMinutes);
       }
-
-      // Add to new parent's source project
       if (newParentProjectId) {
         await incrementProjectMinutes(newParentProjectId, movedTimeMinutes);
       }
@@ -721,7 +864,6 @@ export function useCampaignSession(campaign: Campaign | null) {
       .update({ parent_item_id: parentItemId })
       .eq("id", itemId);
 
-    // Reorder locally so children appear directly after parent (and after existing children)
     setItems((prev) => {
       const next = [...prev];
       const fromIdx = next.findIndex((i) => i.id === itemId);
@@ -736,14 +878,12 @@ export function useCampaignSession(campaign: Campaign | null) {
         if (parentIdx < 0) {
           next.push(moved);
         } else {
-          // place after the parent and its current contiguous children
           let insertAt = parentIdx + 1;
           while (insertAt < next.length && next[insertAt].parent_item_id === parentItemId) insertAt++;
           next.splice(insertAt, 0, moved);
         }
       }
 
-      // Persist display_order
       const updates = next.map((it, idx) =>
         supabase.from("campaign_items").update({ display_order: idx }).eq("id", it.id)
       );
@@ -754,38 +894,36 @@ export function useCampaignSession(campaign: Campaign | null) {
     return { blocked: false };
   }, [items, campaign, getDescendantTotalSeconds, decrementProjectMinutes, incrementProjectMinutes]);
 
-  // Calculate total campaign time from all item times
   const calculateTotalFromItems = useCallback((itemsList: CampaignItem[], currentTaskTimeSeconds: number = 0) => {
-    // Sum all item time_spent (in seconds), convert to minutes
     const totalSeconds = itemsList.reduce((sum, item) => sum + (item.time_spent || 0), 0);
-    // Add any unsaved current task time
     return Math.ceil((totalSeconds + currentTaskTimeSeconds) / 60);
   }, []);
 
   // End session and save time to database
   const endSession = useCallback(async () => {
-    // Pause first to commit any running time
     pauseTimer();
     
     if (!campaign) return 0;
 
-    // Calculate current task time from accumulated state
-    const currentTaskTimeSeconds = Math.floor(timerState.accumulatedTaskMs / 1000);
+    const currentState = timerStateRef.current;
+    const currentItems = itemsRef.current;
+    const currentTaskTimeSeconds = Math.floor(currentState.taskAccumulatedMs / 1000);
 
-    // Save current task's time before ending
-    const currentItem = items[timerState.currentTaskIndex];
+    const currentItem = currentState.timedTaskId 
+      ? currentItems.find(i => i.id === currentState.timedTaskId)
+      : null;
+      
     if (currentItem && currentTaskTimeSeconds > 0) {
       await saveItemTime(currentItem, currentTaskTimeSeconds);
     }
 
-    // Recalculate total from all items (including the just-saved current task time)
     const updatedItems = currentItem && currentTaskTimeSeconds > 0
-      ? items.map(item => 
+      ? currentItems.map(item => 
           item.id === currentItem.id 
             ? { ...item, time_spent: (item.time_spent || 0) + currentTaskTimeSeconds }
             : item
         )
-      : items;
+      : currentItems;
     
     const newTotalTime = calculateTotalFromItems(updatedItems, 0);
     const newSessionCount = (campaign.session_count || 0) + 1;
@@ -802,36 +940,36 @@ export function useCampaignSession(campaign: Campaign | null) {
       console.error("Failed to save session time:", error);
     }
 
-    // Clear localStorage
     clearTimerState(campaign.id);
 
-    return Math.floor((timerState.accumulatedSessionMs) / 60000);
-  }, [campaign, timerState, items, pauseTimer, saveItemTime, calculateTotalFromItems]);
+    return Math.floor((currentState.sessionAccumulatedMs) / 60000);
+  }, [campaign, pauseTimer, saveItemTime, calculateTotalFromItems]);
 
   // Start a new session without leaving the page
   const startNewSession = useCallback(async () => {
-    // Pause first to commit any running time
     pauseTimer();
     
     if (!campaign) return;
 
-    // Calculate current task time from accumulated state
-    const currentTaskTimeSeconds = Math.floor(timerState.accumulatedTaskMs / 1000);
+    const currentState = timerStateRef.current;
+    const currentItems = itemsRef.current;
+    const currentTaskTimeSeconds = Math.floor(currentState.taskAccumulatedMs / 1000);
 
-    // Save current task's time if any
-    const currentItem = items[timerState.currentTaskIndex];
+    const currentItem = currentState.timedTaskId 
+      ? currentItems.find(i => i.id === currentState.timedTaskId)
+      : null;
+      
     if (currentItem && currentTaskTimeSeconds > 0) {
       await saveItemTime(currentItem, currentTaskTimeSeconds);
     }
 
-    // Recalculate total from all items
     const updatedItems = currentItem && currentTaskTimeSeconds > 0
-      ? items.map(item => 
+      ? currentItems.map(item => 
           item.id === currentItem.id 
             ? { ...item, time_spent: (item.time_spent || 0) + currentTaskTimeSeconds }
             : item
         )
-      : items;
+      : currentItems;
     
     const newTotalTime = calculateTotalFromItems(updatedItems, 0);
     const newSessionCount = (campaign.session_count || 0) + 1;
@@ -844,25 +982,27 @@ export function useCampaignSession(campaign: Campaign | null) {
       })
       .eq("id", campaign.id);
 
-    // Reset timer state for new session
-    setTimerState(prev => ({
+    // Find first active task for new session
+    const firstActive = currentItems.find(i => i.status !== 'completed' && i.status !== 'abandoned');
+
+    setTimerState({
       isRunning: false,
-      runningSince: null,
-      accumulatedSessionMs: 0,
-      accumulatedTaskMs: 0,
+      runningSinceMs: null,
+      sessionAccumulatedMs: 0,
+      taskAccumulatedMs: 0,
       itemAccumulatedMs: {},
-      currentTaskIndex: prev.currentTaskIndex,
+      timedTaskId: firstActive?.id || null,
       currentSessionNumber: newSessionCount + 1
-    }));
+    });
+
+    if (firstActive) {
+      setSelectedTaskId(firstActive.id);
+    }
 
     setCampaignTotalTime(newTotalTime);
-    
-    // Clear localStorage
     clearTimerState(campaign.id);
-    
-    // Refresh items to get updated data
     await fetchItems();
-  }, [campaign, items, timerState, pauseTimer, saveItemTime, fetchItems, calculateTotalFromItems]);
+  }, [campaign, pauseTimer, saveItemTime, fetchItems, calculateTotalFromItems]);
 
   // Uncheck/reset a completed item
   const uncheckItem = useCallback(async (itemId: string) => {
@@ -886,7 +1026,6 @@ export function useCampaignSession(campaign: Campaign | null) {
   const reorderItems = useCallback(async (newItems: CampaignItem[]) => {
     setItems(newItems);
     
-    // Update display_order in database
     const updates = newItems.map((item, index) => 
       supabase
         .from("campaign_items")
@@ -964,7 +1103,7 @@ export function useCampaignSession(campaign: Campaign | null) {
     return newItem;
   }, [campaign, items.length]);
 
-  // Add a temporary item (pop-up quest or hidden territory) - NOT saved to main tables
+  // Add a temporary item (pop-up quest or hidden territory)
   const addTemporaryItem = useCallback(async (
     type: 'task' | 'project',
     name: string,
@@ -990,11 +1129,10 @@ export function useCampaignSession(campaign: Campaign | null) {
       throw error;
     }
 
-    // Create a local item representation for temporary items
     const newItem: CampaignItem = {
       ...data,
       task: type === 'task' ? {
-        id: data.id, // Use campaign_item id as pseudo-task id
+        id: data.id,
         title: name,
         description: description,
         status: 'pending',
@@ -1002,7 +1140,7 @@ export function useCampaignSession(campaign: Campaign | null) {
         time_logged: 0
       } : undefined,
       project: type === 'project' ? {
-        id: data.id, // Use campaign_item id as pseudo-project id
+        id: data.id,
         name: name,
         description: description,
         status: 'active',
@@ -1014,7 +1152,7 @@ export function useCampaignSession(campaign: Campaign | null) {
     return newItem;
   }, [campaign, items.length]);
 
-  // Mark a temporary item as permanent (save to main tables)
+  // Mark a temporary item as permanent
   const markItemPermanent = useCallback(async (itemId: string) => {
     const item = items.find(i => i.id === itemId);
     if (!item || !item.is_temporary) return;
@@ -1024,7 +1162,6 @@ export function useCampaignSession(campaign: Campaign | null) {
 
     try {
       if (item.temporary_type === 'task') {
-        // Create task in main tasks table
         const { data: newTask, error } = await supabase
           .from("tasks")
           .insert({
@@ -1040,7 +1177,6 @@ export function useCampaignSession(campaign: Campaign | null) {
 
         if (error) throw error;
 
-        // Update campaign_item to link to real task and clear temporary flags
         await supabase
           .from("campaign_items")
           .update({
@@ -1052,7 +1188,6 @@ export function useCampaignSession(campaign: Campaign | null) {
           })
           .eq("id", itemId);
 
-        // Update local state
         setItems(prev => prev.map(i => 
           i.id === itemId 
             ? {
@@ -1074,7 +1209,6 @@ export function useCampaignSession(campaign: Campaign | null) {
             : i
         ));
       } else if (item.temporary_type === 'project') {
-        // Create project in main projects table
         const { data: newProject, error } = await supabase
           .from("projects")
           .insert({
@@ -1089,7 +1223,6 @@ export function useCampaignSession(campaign: Campaign | null) {
 
         if (error) throw error;
 
-        // Update campaign_item to link to real project and clear temporary flags
         await supabase
           .from("campaign_items")
           .update({
@@ -1101,7 +1234,6 @@ export function useCampaignSession(campaign: Campaign | null) {
           })
           .eq("id", itemId);
 
-        // Update local state
         setItems(prev => prev.map(i => 
           i.id === itemId 
             ? {
@@ -1130,14 +1262,31 @@ export function useCampaignSession(campaign: Campaign | null) {
     }
   }, [items]);
 
-  // Set current task index (only allow selecting non-completed items)
-  const setCurrentTaskIndex = useCallback((index: number) => {
-    const targetItem = items[index];
+  // Select a task in UI - does NOT start timing!
+  const selectTask = useCallback((taskId: string) => {
+    const targetItem = items.find(i => i.id === taskId);
     if (targetItem && (targetItem.status === 'completed' || targetItem.status === 'abandoned')) {
       return; // Can't select completed/abandoned items
     }
-    switchToTask(index);
-  }, [items, switchToTask]);
+    setSelectedTaskId(taskId);
+  }, [items]);
+
+  // Backwards-compatible setCurrentTaskIndex - now just selects + switches if running
+  const setCurrentTaskIndex = useCallback((index: number) => {
+    const targetItem = items[index];
+    if (!targetItem) return;
+    if (targetItem.status === 'completed' || targetItem.status === 'abandoned') {
+      return;
+    }
+    
+    // Always update selection
+    setSelectedTaskId(targetItem.id);
+    
+    // If timer is running, switch to this task (saves current task time first)
+    if (timerState.isRunning && timerState.timedTaskId !== targetItem.id) {
+      switchToTask(targetItem.id);
+    }
+  }, [items, timerState.isRunning, timerState.timedTaskId, switchToTask]);
 
   // Initialize
   useEffect(() => {
@@ -1168,9 +1317,13 @@ export function useCampaignSession(campaign: Campaign | null) {
     addTemporaryItem,
     markItemPermanent,
     setCurrentTaskIndex,
+    selectTask,
+    switchToTask,
     uncheckItem,
     updateItemTimeManually,
     setItemParent,
-    refreshItems: fetchItems
+    refreshItems: fetchItems,
+    selectedTaskId,
+    timedTaskId: timerState.timedTaskId
   };
 }

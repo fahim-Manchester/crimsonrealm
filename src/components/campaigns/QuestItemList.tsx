@@ -77,6 +77,8 @@ interface QuestItemListProps {
   onUncheckItem: (itemId: string) => void;
   onUpdateTime: (itemId: string, minutes: number) => void;
   onMarkPermanent?: (itemId: string) => void;
+  timedTaskId?: string | null; // NEW: Which task is actually being timed
+  selectedTaskId?: string | null; // NEW: Which task is selected in UI
 }
 
 export function QuestItemList({
@@ -89,6 +91,8 @@ export function QuestItemList({
   onUncheckItem,
   onUpdateTime,
   onMarkPermanent,
+  timedTaskId,
+  selectedTaskId,
 }: QuestItemListProps) {
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   
@@ -173,12 +177,19 @@ export function QuestItemList({
               const indentLevel = getIndentLevel(item, byId);
               const displaySeconds = aggregatedSecondsById.get(item.id) ?? getOwnSeconds(item);
               const hasChildren = childrenMap.has(item.id);
+              
+              // NEW: Use ID-based checks for timing vs selection
+              const isBeingTimed = timedTaskId === item.id;
+              const isSelected = selectedTaskId === item.id;
+              // Fallback to index-based for backwards compatibility
+              const isCurrentByIndex = index === currentIndex;
 
               return (
                 <SortableTaskItem
                   key={item.id}
                   item={item}
-                  isCurrentTask={index === currentIndex}
+                  isCurrentTask={isBeingTimed || (timedTaskId === undefined && isCurrentByIndex)}
+                  isSelected={isSelected || (selectedTaskId === undefined && isCurrentByIndex)}
                   indentLevel={indentLevel}
                   showAggregatedTime={hasChildren}
                   displayTimeSeconds={displaySeconds}
@@ -187,7 +198,7 @@ export function QuestItemList({
                   onUnembed={indentLevel > 0 ? () => onSetParent(item.id, null) : undefined}
                   onUpdateTime={(mins) => onUpdateTime(item.id, mins)}
                   onMarkPermanent={item.is_temporary && onMarkPermanent ? () => onMarkPermanent(item.id) : undefined}
-                  sessionTimeSeconds={index === currentIndex ? (itemSessionTimes[item.id] || 0) : 0}
+                  sessionTimeSeconds={isBeingTimed ? (itemSessionTimes[item.id] || 0) : 0}
                   nestDropId={nestId(item.id)}
                   isDragActive={isDragActive}
                 />
