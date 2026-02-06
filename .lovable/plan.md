@@ -1,633 +1,294 @@
 
-# Timer Accuracy Fix Plan - Complete Overhaul
+# Timer Bug Fix Plan - Complete Resolution
 
-## Problems Confirmed
+## Summary of Issues Found
 
-After reviewing the code and your feedback, I've identified **5 remaining root causes** that cause the timer to "hallucinate" and round to minutes:
+After analyzing the code and your video recordings, I've identified **3 critical bugs**:
+
+### Bug 1: Dual Selection Visual Confusion
+When clicking a new task while the timer runs on another, **both tasks appear highlighted** because:
+- `isCurrentTask` (the timed task) shows a strong primary highlight
+- `isSelected` (the clicked task) shows a lighter primary highlight
+- Users expect only ONE item to be visually "active"
+
+### Bug 2: Time Data Loss on Session End (Critical)
+When ending a session after switching tasks, **time from previous tasks is lost**:
+- `switchToTask()` commits running time to `itemAccumulatedMs[oldTask]`
+- But `endSession()` only saves `taskAccumulatedMs` for the current task
+- All time accumulated in `itemAccumulatedMs` for OTHER tasks is **never persisted to the database**
+
+This is why Task 2's progress gets "erased" - it was actually Task 1's time that was lost and never saved.
+
+### Bug 3: Session Total Glitches
+A consequence of Bug 2 - incomplete persistence causes mismatched totals.
 
 ---
 
-### Root Cause #1: `setCurrentTaskIndex` Still Calls `switchToTask()` While Timer Running (Lines 1229-1244)
+## Solution Plan
 
-**The Bug:**
+### Fix 1: Single Visual Selection (Clarify UI Intent)
+
+**Problem**: Two different highlights cause confusion.
+
+**Solution**: When the timer is running, the **timed task** should always appear as the primary selection. The `selectedTaskId` should only affect which task STARTS timing when you press Play.
+
+Changes to `SortableTaskItem.tsx`:
+- Modify the highlighting logic so that during active timing, ONLY the timed task gets the "active" highlight
+- The selected task (when different from timed) gets a subtle "will start next" indicator instead of looking selected
+
+**Current styling logic:**
 ```typescript
-// Line 1241-1243 in useCampaignSession.ts
-if (timerState.isRunning && timerState.timedTaskId !== targetItem.id) {
-  switchToTask(targetItem.id);  // ← This SAVES time to previous task
+if (isCurrentTask) return "border-primary bg-primary/20 ring-2 ring-primary/30";  // Timed
+if (isHighlighted && !isCurrentTask) return "border-primary/50 bg-primary/10 ring-1 ring-primary/20";  // Selected
+```
+
+**New styling logic:**
+```typescript
+// If timer is running, only the timed task gets primary highlight
+// Selected-but-not-timed gets a very subtle "next up" indicator (dashed border, no ring)
+if (isCurrentTask) return "border-primary bg-primary/20 ring-2 ring-primary/30";
+if (isHighlighted && !isCurrentTask && !isTimerRunning) {
+  return "border-primary/50 bg-primary/10 ring-1 ring-primary/20";  // Only when paused
+}
+if (isHighlighted && !isCurrentTask && isTimerRunning) {
+  return "border-dashed border-muted-foreground/50";  // Subtle "next" indicator
 }
 ```
 
-When you click a task while the timer is **running**, it calls `switchToTask()` which:
-1. Calculates elapsed time since `runningSinceMs`
-2. Saves that time to the current task
-3. Resets `runningSinceMs` to now
-
-But it also updates `itemAccumulatedMs` for the previous task, which causes double-counting because the derived `itemSessionTimes` already includes running time.
-
-**Even worse**: If `runningSinceMs` is stale (from hours ago due to a reload bug), clicking any task adds that entire stale duration.
+Add `isTimerRunning` prop to `SortableTaskItem` to know if any task is currently being timed.
 
 ---
 
-### Root Cause #2: `itemSessionTimes` Computation Uses Stale `itemAccumulatedMs` (Lines 128-143)
+### Fix 2: Save ALL Accumulated Item Times on Session End (Critical)
 
-**The Bug:**
-The `itemSessionTimes` memo computes display time like this:
+**Problem**: `endSession()` only saves the current task's time, losing time from other tasks worked on during the session.
+
+**Solution**: Iterate through ALL items in `itemAccumulatedMs` and save each one's accumulated time.
+
+Changes to `useCampaignSession.ts` - `endSession()`:
+
+**Current (broken):**
 ```typescript
-// For the timed item, add running time to accumulated
-times[timedItem.id] = Math.floor(((timerState.itemAccumulatedMs[timedItem.id] || 0) + runningMs) / 1000);
-```
-
-But `itemAccumulatedMs` gets updated when you `switchToTask()`, `pauseTimer()`, etc. This means:
-- While running: displays `accumulated + running`
-- After pause: displays `accumulated` (which now includes the running time)
-
-This is correct in theory, but when `switchToTask()` is called during selection (Root Cause #1), it prematurely commits time to `itemAccumulatedMs`, causing the display to show double.
-
----
-
-### Root Cause #3: Task Row Time Display Rounds to 0 When < 60 Seconds (Lines 95-96 in SortableTaskItem.tsx)
-
-**The Bug:**
-```typescript
-const totalTimeSpent = displayTimeSeconds ?? ((item.time_spent || 0) + sessionTimeSeconds);
-```
-
-This correctly sums persisted time + session time. **However**, the `displayTimeSeconds` passed from `QuestItemList` is computed from `aggregatedSecondsById` which uses `getOwnSeconds`:
-```typescript
-const getOwnSeconds = (item: CampaignItem) => (item.time_spent || 0) + (itemSessionTimes[item.id] || 0);
-```
-
-If `itemSessionTimes[item.id]` is 0 (because the item is NOT the timed item), the running time never shows. Only the **timed item** gets live session time - other items only show their persisted `time_spent` (which was rounded on previous saves).
-
-**Why it appears "rounded to 1 minute":**
-When you end a session or complete a task, `saveItemTime()` writes to the database:
-```typescript
-// Line 460-466
-await supabase
-  .from("campaign_items")
-  .update({ time_spent: (item.time_spent || 0) + timeSpentSeconds })
-  .eq("id", item.id);
-```
-
-This correctly saves seconds! **But** the source task/project tables use minutes:
-```typescript
-// Line 468-469
-if (item.task_id) await incrementTaskMinutes(item.task_id, timeSpentMinutes);
-```
-
-The `incrementTaskMinutes` function adds `Math.ceil(timeSpentSeconds / 60)` to the task's `time_logged`. This rounding propagates confusion but doesn't affect `campaign_items.time_spent`.
-
-**The real issue**: When you fetch items again (after reload or refresh), the `time_spent` in the database IS in seconds, but...
-
-Wait - let me re-check. Looking at database query results:
-```
-time_spent:81   // 81 seconds = 1:21
-time_spent:310  // 310 seconds = 5:10
-time_spent:36   // 36 seconds
-```
-
-These ARE in seconds. So the database is correct. The problem is the **display** not updating live while running.
-
----
-
-### Root Cause #4: Only Timed Item Gets Live Session Time Display
-
-Looking at `QuestItemList.tsx` line 201:
-```typescript
-sessionTimeSeconds={isBeingTimed ? (itemSessionTimes[item.id] || 0) : 0}
-```
-
-**Only the currently timed item** receives live session time. Other items show their persisted `time_spent` (from DB) + 0.
-
-This means:
-- Item A (timed): shows DB time + live running time
-- Item B (not timed): shows DB time only (static)
-
-When you rapidly switch between items, the previously-timed item "freezes" at its last DB value until you refresh.
-
----
-
-### Root Cause #5: `itemAccumulatedMs` Double-Counts on Task Switch
-
-When `switchToTask()` runs (lines 547-597):
-```typescript
-// Line 590-593
-itemAccumulatedMs: currentItem && prev.runningSinceMs ? {
-  ...prev.itemAccumulatedMs,
-  [currentItem.id]: (prev.itemAccumulatedMs[currentItem.id] || 0) + (now - prev.runningSinceMs)
-} : prev.itemAccumulatedMs
-```
-
-This adds running time to `itemAccumulatedMs`. But the `itemSessionTimes` memo (lines 128-143) also adds running time for the timed item:
-```typescript
-if (timedItem && timerState.runningSinceMs) {
-  const runningMs = Date.now() - timerState.runningSinceMs;
-  times[timedItem.id] = Math.floor(((timerState.itemAccumulatedMs[timedItem.id] || 0) + runningMs) / 1000);
-}
-```
-
-This is fine **while running**, but when `switchToTask()` commits time to `itemAccumulatedMs` and then sets `runningSinceMs = now`, the next tick will show:
-- `itemAccumulatedMs[oldItem]` = accumulated + old running time (committed)
-- `runningMs` for new item = 0 (just started)
-
-The old item's display freezes correctly, but if there's any timing overlap or the state updates out of order, you get double-counting.
-
----
-
-## Solution: Complete Timer State Redesign
-
-### Principle: Single Source of Truth with Strict Separation
-
-1. **Selection is purely visual** - clicking a task only changes `selectedTaskId`
-2. **Timing is explicit** - only Play/Pause/Complete/Switch-while-running affects timing
-3. **Live display is derived** - never mutate accumulated values for display purposes
-4. **Commits happen only on explicit actions** - no automatic/periodic commits
-
-### Changes Overview
-
-**File 1: `src/hooks/useCampaignSession.ts`**
-
-1. **Remove `switchToTask()` call from `setCurrentTaskIndex()`**
-   - `setCurrentTaskIndex()` should ONLY update `selectedTaskId`
-   - Add a new `startTimerOnSelectedTask()` function that users call explicitly
-
-2. **Fix `itemSessionTimes` to show all accumulated items (not just timed)**
-   - For non-timed items, show their accumulated session time (from `itemAccumulatedMs`)
-   - For the timed item, show accumulated + running time
-   - This fixes the "only timed item updates" problem
-
-3. **Prevent stale `runningSinceMs` from causing hallucinations**
-   - On hydration, if `isRunning` is true but we're loading state after a reload, validate sanity
-   - Add a maximum elapsed time guard (e.g., if running > 4 hours, prompt user)
-
-4. **Fix double-counting in `switchToTask()`**
-   - Commit accumulated ms cleanly, then reset `runningSinceMs`
-   - Don't add running time if timer wasn't actually running
-
-5. **Add guards: only compute/save time when timer is genuinely running**
-   - Check `timerState.isRunning && timerState.runningSinceMs` before any calculation
-
-**File 2: `src/components/campaigns/QuestItemList.tsx`**
-
-1. **Pass all session times, not just for timed item**
-   - Currently passes `sessionTimeSeconds={isBeingTimed ? ... : 0}`
-   - Change to pass full session time for all items
-
-**File 3: `src/components/campaigns/SortableTaskItem.tsx`**
-
-1. **Use sessionTimeSeconds for all items, not just current**
-   - Already structured correctly, just needs correct data from parent
-
----
-
-## Detailed Implementation
-
-### Change 1: Decouple Selection from Timer Switching
-
-**Current code (broken):**
-```typescript
-const setCurrentTaskIndex = useCallback((index: number) => {
-  const targetItem = items[index];
-  if (!targetItem) return;
-  if (targetItem.status === 'completed' || targetItem.status === 'abandoned') return;
+const endSession = useCallback(async () => {
+  pauseTimer();
   
-  setSelectedTaskId(targetItem.id);
+  const currentTaskTimeSeconds = Math.floor(currentState.taskAccumulatedMs / 1000);
   
-  // THIS IS THE BUG: auto-switching while running
-  if (timerState.isRunning && timerState.timedTaskId !== targetItem.id) {
-    switchToTask(targetItem.id);
+  if (currentItem && currentTaskTimeSeconds > 0) {
+    await saveItemTime(currentItem, currentTaskTimeSeconds);  // Only saves ONE task
   }
-}, [items, timerState.isRunning, timerState.timedTaskId, switchToTask]);
 ```
 
-**Fixed code:**
+**Fixed:**
 ```typescript
-const setCurrentTaskIndex = useCallback((index: number) => {
-  const targetItem = items[index];
-  if (!targetItem) return;
-  if (targetItem.status === 'completed' || targetItem.status === 'abandoned') return;
-  
-  // ONLY update selection - never auto-switch timer
-  setSelectedTaskId(targetItem.id);
-}, [items]);
-```
-
-**New function for explicit timer switch:**
-```typescript
-const startTimerOnTask = useCallback((taskId: string) => {
-  const targetItem = items.find(i => i.id === taskId);
-  if (!targetItem || targetItem.status === 'completed' || targetItem.status === 'abandoned') return;
-  
-  // If already timing this task, just ensure timer is running
-  if (timerState.timedTaskId === taskId) {
-    if (!timerState.isRunning) startTimer();
-    return;
-  }
-  
-  // If timer is running on different task, switch (commits time to old task)
-  if (timerState.isRunning && timerState.timedTaskId) {
-    switchToTask(taskId);
-  } else {
-    // Timer not running - just set timed task and start
-    setTimerState(prev => ({
-      ...prev,
-      timedTaskId: taskId,
-      taskAccumulatedMs: prev.itemAccumulatedMs[taskId] || 0
-    }));
-    setSelectedTaskId(taskId);
-    startTimer(taskId);
-  }
-}, [items, timerState, startTimer, switchToTask]);
-```
-
-### Change 2: Fix `itemSessionTimes` to Show All Items
-
-**Current code (incomplete):**
-```typescript
-const itemSessionTimes = useMemo(() => {
-  const times: ItemSessionTime = {};
-  const timedItem = timerState.timedTaskId ? items.find(i => i.id === timerState.timedTaskId) : null;
-  
-  // Only populate from itemAccumulatedMs (floor to seconds)
-  for (const [itemId, accumulatedMs] of Object.entries(timerState.itemAccumulatedMs)) {
-    times[itemId] = Math.floor(accumulatedMs / 1000);
-  }
-  
-  // Add running time ONLY for timed item
-  if (timedItem && timerState.runningSinceMs) {
-    const runningMs = Date.now() - timerState.runningSinceMs;
-    times[timedItem.id] = Math.floor(((timerState.itemAccumulatedMs[timedItem.id] || 0) + runningMs) / 1000);
-  }
-  
-  return times;
-}, [items, timerState.timedTaskId, timerState.itemAccumulatedMs, timerState.runningSinceMs, tick]);
-```
-
-**Fixed code:**
-```typescript
-const itemSessionTimes = useMemo(() => {
-  const times: ItemSessionTime = {};
-  
-  // Populate ALL items from their accumulated session time
-  for (const [itemId, accumulatedMs] of Object.entries(timerState.itemAccumulatedMs)) {
-    times[itemId] = Math.floor(accumulatedMs / 1000);
-  }
-  
-  // Add running time for the currently timed item (if running)
-  if (timerState.isRunning && timerState.timedTaskId && timerState.runningSinceMs) {
-    const runningMs = Date.now() - timerState.runningSinceMs;
-    const accumulatedMs = timerState.itemAccumulatedMs[timerState.timedTaskId] || 0;
-    times[timerState.timedTaskId] = Math.floor((accumulatedMs + runningMs) / 1000);
-  }
-  
-  return times;
-}, [timerState.isRunning, timerState.timedTaskId, timerState.itemAccumulatedMs, timerState.runningSinceMs, tick]);
-```
-
-### Change 3: Fix `switchToTask()` Guards
-
-**Add guard at the beginning:**
-```typescript
-const switchToTask = useCallback(async (newTaskId: string) => {
-  const currentItems = itemsRef.current;
-  const newItem = currentItems.find(i => i.id === newTaskId);
-  if (!newItem || newItem.status === 'completed' || newItem.status === 'abandoned') return;
+const endSession = useCallback(async () => {
+  // First, pause timer to commit running time to itemAccumulatedMs
+  pauseTimer();
   
   const currentState = timerStateRef.current;
+  const currentItems = itemsRef.current;
   
-  // GUARD: Only save time if timer was ACTUALLY running with valid timestamp
-  if (!currentState.isRunning || !currentState.runningSinceMs) {
-    // Timer not running - just switch selection, don't commit any time
-    setTimerState(prev => ({
-      ...prev,
-      timedTaskId: newTaskId,
-      taskAccumulatedMs: prev.itemAccumulatedMs[newTaskId] || 0
-    }));
-    setSelectedTaskId(newTaskId);
-    return;
-  }
-  
-  // ... rest of the function (only runs if timer was actually running)
-}, [saveItemTime]);
-```
-
-### Change 4: QuestItemList - Pass Session Times to All Items
-
-**Current code:**
-```typescript
-sessionTimeSeconds={isBeingTimed ? (itemSessionTimes[item.id] || 0) : 0}
-```
-
-**Fixed code:**
-```typescript
-sessionTimeSeconds={itemSessionTimes[item.id] || 0}
-```
-
-This way, all items show their accumulated session time, not just the timed one.
-
-### Change 5: Add Stale Timer Validation on Hydration
-
-**Enhance the hydration effect (lines 272-306):**
-```typescript
-useEffect(() => {
-  if (!campaign || hydratedRef.current) return;
-  
-  const saved = loadTimerState(campaign.id);
-  if (saved) {
-    // Validate: if running but runningSinceMs is stale (> 4 hours), pause it
-    if (saved.isRunning && saved.runningSinceMs) {
-      const elapsedMs = Date.now() - saved.runningSinceMs;
-      const elapsedHours = elapsedMs / 3600000;
-      
-      if (elapsedHours > 4) {
-        console.warn(`Timer was running for ${elapsedHours.toFixed(1)}h - auto-pausing`);
-        // Add the elapsed time to accumulated (up to 4 hours max)
-        const maxMs = 4 * 3600000;
-        const safeElapsedMs = Math.min(elapsedMs, maxMs);
-        
-        const pausedState: TimerState = {
-          ...saved,
-          isRunning: false,
-          runningSinceMs: null,
-          sessionAccumulatedMs: saved.sessionAccumulatedMs + safeElapsedMs,
-          itemAccumulatedMs: saved.timedTaskId ? {
-            ...saved.itemAccumulatedMs,
-            [saved.timedTaskId]: (saved.itemAccumulatedMs[saved.timedTaskId] || 0) + safeElapsedMs
-          } : saved.itemAccumulatedMs
-        };
-        
-        setTimerState(pausedState);
-        saveTimerState(campaign.id, pausedState);
-        toast.info("Timer was auto-paused (running > 4 hours)");
-      } else {
-        // Valid running state
-        setTimerState(saved);
-        setTick(t => t + 1);
-      }
-    } else {
-      // Paused state
-      setTimerState(saved);
-    }
+  // Save time for ALL items that accumulated time this session
+  for (const [itemId, accumulatedMs] of Object.entries(currentState.itemAccumulatedMs)) {
+    const timeSeconds = Math.floor(accumulatedMs / 1000);
+    if (timeSeconds <= 0) continue;
     
-    if (saved.timedTaskId) {
-      setSelectedTaskId(saved.timedTaskId);
-    }
+    const item = currentItems.find(i => i.id === itemId);
+    if (!item) continue;
+    
+    await saveItemTime(item, timeSeconds);
+    
+    // Update local state
+    setItems(prev => prev.map(i => 
+      i.id === itemId 
+        ? { ...i, time_spent: (i.time_spent || 0) + timeSeconds }
+        : i
+    ));
   }
-  hydratedRef.current = true;
-}, [campaign?.id]);
+  
+  // ... rest of function
+```
+
+---
+
+### Fix 3: Apply Same Fix to `startNewSession()`
+
+The `startNewSession()` function has the same bug - it only saves the current task's time.
+
+Apply identical fix: iterate through `itemAccumulatedMs` and save all items.
+
+---
+
+### Fix 4: Prevent Double-Saving in switchToTask()
+
+Currently, `switchToTask()` calls `saveItemTime()` for the old task when switching. This is fine, but we need to ensure `endSession()` doesn't save it again.
+
+After saving in `switchToTask()`, we should clear that item from `itemAccumulatedMs`:
+
+```typescript
+// After saving old item's time, clear its accumulated ms to prevent double-save
+setTimerState(prev => {
+  const updatedItemAccumulatedMs = { ...prev.itemAccumulatedMs };
+  delete updatedItemAccumulatedMs[oldItemId];  // Already saved, don't save again
+  
+  return {
+    ...prev,
+    // ...
+    itemAccumulatedMs: updatedItemAccumulatedMs
+  };
+});
+```
+
+Wait - looking more carefully at the current code, `switchToTask()` DOES save to DB and update local items, but it also keeps the value in `itemAccumulatedMs`. This causes potential double-saving.
+
+**Better approach**: Instead of saving in `switchToTask()`, just commit to `itemAccumulatedMs` and let `endSession()` handle all DB saves. This is cleaner and avoids race conditions.
+
+Changes to `switchToTask()`:
+- Remove the `saveItemTime()` call
+- Remove the `setItems()` update
+- Just commit to `itemAccumulatedMs` and switch tasks
+- All persistence happens in `endSession()`
+
+---
+
+### Fix 5: Ensure pauseTimer() Commits Running Time Correctly
+
+The `pauseTimer()` function commits running time to `itemAccumulatedMs`. This needs to be called BEFORE reading `itemAccumulatedMs` in `endSession()`.
+
+Current code already calls `pauseTimer()` first, but we need to ensure the state is updated synchronously. Use a ref-based approach:
+
+```typescript
+const endSession = useCallback(async () => {
+  // Pause and commit running time
+  pauseTimer();
+  
+  // IMPORTANT: Read from ref to get post-pause state
+  // React state updates are async, but we update ref synchronously in pauseTimer
+  await new Promise(r => setTimeout(r, 0));  // Allow state to settle
+  
+  const finalState = timerStateRef.current;
+  // Now finalState.itemAccumulatedMs includes the committed running time
+```
+
+Actually, the current `pauseTimer()` sets state asynchronously, so `timerStateRef.current` might not have the new values immediately. We need to compute the final values inline:
+
+```typescript
+const endSession = useCallback(async () => {
+  const now = Date.now();
+  const currentState = timerStateRef.current;
+  
+  // Compute what pauseTimer WOULD commit
+  const elapsedSinceStart = currentState.isRunning && currentState.runningSinceMs 
+    ? now - currentState.runningSinceMs 
+    : 0;
+  
+  const finalItemAccumulatedMs = { ...currentState.itemAccumulatedMs };
+  if (currentState.timedTaskId && elapsedSinceStart > 0) {
+    finalItemAccumulatedMs[currentState.timedTaskId] = 
+      (finalItemAccumulatedMs[currentState.timedTaskId] || 0) + elapsedSinceStart;
+  }
+  
+  // Now save ALL items
+  for (const [itemId, accumulatedMs] of Object.entries(finalItemAccumulatedMs)) {
+    // ...save each item
+  }
+  
+  // Then clear state
+  pauseTimer();
 ```
 
 ---
 
 ## Files to Modify
 
-1. **`src/hooks/useCampaignSession.ts`**
-   - Line 1229-1244: Remove auto-switch from `setCurrentTaskIndex()`
-   - Lines 128-143: Fix `itemSessionTimes` computation
-   - Lines 547-597: Add guards to `switchToTask()`
-   - Lines 272-306: Enhance hydration validation
-   - Add new `startTimerOnTask()` function
+### 1. `src/hooks/useCampaignSession.ts`
 
-2. **`src/components/campaigns/QuestItemList.tsx`**
-   - Line 201: Pass session time for all items, not just timed
+**endSession() - Lines ~910-953:**
+- Compute final accumulated values inline (including running time)
+- Iterate through ALL items in itemAccumulatedMs
+- Save each item's accumulated time to database
+- Prevent double-saving
 
-3. **`src/pages/CampaignSession.tsx`**
-   - Export `startTimerOnTask` for UI use (optional, if UI needs explicit switch)
+**startNewSession() - Lines ~956-1012:**
+- Apply same fix as endSession()
+
+**switchToTask() - Lines ~580-649:**
+- Remove DB save call (saveItemTime)
+- Remove local items update
+- Keep only the itemAccumulatedMs commit
+- This ensures all persistence is handled by endSession()
+
+### 2. `src/components/campaigns/SortableTaskItem.tsx`
+
+**Add new prop:**
+- `isTimerRunning?: boolean` - whether any timer is currently running
+
+**Update styling logic - Lines ~148-175:**
+- When timer is running, only timed task gets strong highlight
+- Selected-but-not-timed task gets subtle "next up" indicator
+
+### 3. `src/components/campaigns/QuestItemList.tsx`
+
+**Pass isTimerRunning prop - Lines ~188-204:**
+- Add prop to know if timer is running globally
+
+### 4. `src/pages/CampaignSession.tsx`
+
+**No changes needed** - already passes timedTaskId and selectedTaskId correctly
 
 ---
 
-## Acceptance Tests
+## Technical Details
 
-### Test 1: Selection Does Not Affect Time (CRITICAL)
-1. Open campaign with items
-2. Timer is PAUSED
-3. Click rapidly between different items
-4. **Expected**: No item time changes. All times stay exactly as they were.
+### New State Flow for Time Persistence
 
-### Test 2: Only Play Button Starts Timer
-1. Click on Item A (selects it)
-2. Timer still paused
-3. Click Play
-4. **Expected**: Timer starts on Item A, time accumulates
+1. **Start Timer**: Set `runningSinceMs = Date.now()`, set `timedTaskId`
+2. **While Running**: Display shows `itemAccumulatedMs[id] + (now - runningSinceMs)` for timed task
+3. **Pause Timer**: Commit running time to `itemAccumulatedMs[timedTaskId]`, clear `runningSinceMs`
+4. **Switch Task (while running)**: Commit old task's time to `itemAccumulatedMs[oldTaskId]`, set new `timedTaskId`, reset `runningSinceMs = now`
+5. **End Session**: 
+   - Compute final values (including any running time)
+   - For each item in `itemAccumulatedMs`: save to DB
+   - Clear localStorage
 
-### Test 3: Tab Switch Does Not Hallucinate
-1. Start timer on Item A
-2. Wait 30 seconds
-3. Switch to another browser tab for 60 seconds
-4. Return
-5. **Expected**: Item A shows ~90 seconds, not hours
+### Invariants to Maintain
 
-### Test 4: Reload Preserves Correct Time
-1. Start timer, accumulate 45 seconds
-2. Reload page
-3. **Expected**: Timer resumes correctly (or auto-paused if > 4 hours)
+1. **itemAccumulatedMs never includes running time** - running time is only added for display
+2. **All DB saves happen in endSession/startNewSession** - no mid-session DB writes for time
+3. **switchToTask only commits to itemAccumulatedMs** - no DB saves
+4. **Single visual selection** - during timing, only timed task is highlighted
 
-### Test 5: All Items Show Session Time
-1. Work on Item A for 60s, switch to Item B for 30s
-2. Both items should show their respective times (not just the current one)
+---
 
-### Test 6: Totals Are Consistent
-1. Item A: 60s, Item B: 30s
-2. Session Total: 90s
-3. Campaign Total: Previous + 90s
-4. **Expected**: All values add up correctly
+## Test Cases
+
+### Test 1: Switch Tasks and End Session
+1. Start timer on Task A, wait 10 seconds
+2. Click Task B to switch (while running)
+3. Wait 15 seconds on Task B
+4. End session
+5. **Expected**: Task A shows +10s, Task B shows +15s, both saved to DB
+
+### Test 2: Rapid Task Switching
+1. Start timer
+2. Click Task A, B, C rapidly (switching while running)
+3. End session
+4. **Expected**: Each task shows only time actually spent on it, totals match
+
+### Test 3: Visual Selection Clarity
+1. Start timer on Task A
+2. Click Task B (while timer runs)
+3. **Expected**: Task A has strong "ACTIVE" highlight, Task B has subtle "next up" indicator
+
+### Test 4: Return to Campaign
+1. Work on multiple tasks, end session
+2. Navigate away and return to campaign
+3. **Expected**: All task times match what was displayed before leaving
 
 ---
 
 ## Summary
 
-The timer bugs persist because:
-1. **Selection auto-switches the timer** while running, causing time to be committed prematurely
-2. **Only the timed item shows live time** - other items freeze at DB values
-3. **Stale `runningSinceMs`** after reload causes massive time jumps
-4. **Double-counting** when `switchToTask()` commits time that's already shown in display
+The core issue is that **`endSession()` only saves time for the currently timed task**, while time spent on OTHER tasks during the session (stored in `itemAccumulatedMs`) is lost forever.
 
-The fix:
-- Decouple selection from timing completely
-- Show session time for ALL items (not just timed)
-- Add guards to only commit time when timer is genuinely running
-- Validate timer state sanity on hydration
-
-
-
-
-Final Corrections & Hard Guarantees (Must-Apply)
-
-The overhaul above is correct in direction, but the following constraints are mandatory to fully eliminate hallucinated time, double-counting, and rare catastrophic edge cases.
-
-1. Strict Invariant: No Implicit Time Commits
-
-Invariant (must always hold):
-
-itemAccumulatedMs must never include the currently running segment of time for any task until an explicit user action occurs.
-
-Explicit actions that may commit time:
-
-Pause
-
-Start a different task while running
-
-Complete task
-
-Abandon task
-
-Explicit non-actions (must never commit time):
-
-Selecting a task
-
-Re-ordering tasks
-
-Sorting / filtering
-
-UI re-renders
-
-Tab switches
-
-Reloads
-
-Hydration
-
-If this invariant is violated even once, time will double-count.
-
-2. Selection vs Timing Must Be Fully Decoupled
-
-Selection is purely visual.
-
-There must be two separate, non-overlapping actions:
-
-selectTask(taskId)
-
-Updates selectedTaskId
-
-Never starts, pauses, switches, or commits time
-
-Safe to call repeatedly and rapidly
-
-startTask(taskId)
-
-The only function allowed to:
-
-Start timing
-
-Switch the running task
-
-Commit elapsed time to a previous task
-
-If a different task is currently running:
-
-Commit elapsed time to that task
-
-Reset runningSinceMs
-
-Set new timedTaskId
-
-No other function may transition running state.
-
-3. Canonical Timer State (Single Source of Truth)
-
-The timer state must be represented using only these fields:
-
-timedTaskId: string | null
-isRunning: boolean
-runningSinceMs: number | null
-itemAccumulatedMs: Record<string, number> // committed session ms only
-
-
-No derived or duplicated timing values may be stored in state.
-
-4. Display Time Must Always Be Derived (Never Mutated)
-
-All displayed task times must be derived as follows:
-
-displayMs(taskId) =
-  itemAccumulatedMs[taskId] +
-  (
-    isRunning &&
-    taskId === timedTaskId &&
-    runningSinceMs
-      ? Date.now() - runningSinceMs
-      : 0
-  )
-
-
-itemAccumulatedMs must never be mutated for display purposes.
-
-5. Session Times Must Exist for All Items
-
-itemSessionTimes must be generated from the full items list, not from
-Object.entries(itemAccumulatedMs).
-
-Every item must always receive a session time value (default 0), so that:
-
-Previously worked-on items do not appear frozen
-
-Session totals remain consistent
-
-UI never “resets” time on unrelated items
-
-6. Hydration Safety Guard (No Silent Time Injection)
-
-On hydration or reload:
-
-If isRunning === true and runningSinceMs is missing → force pause, add no time
-
-If elapsed time since runningSinceMs is implausibly large:
-
-Do not auto-add elapsed time
-
-Pause the timer immediately
-
-Show a user notification explaining the pause
-
-Allow the user to manually apply elapsed time if desired
-
-Under no circumstance should large elapsed durations be silently written into state.
-
-Safety over completeness.
-
-7. One Running Task Rule (Hard Enforcement)
-
-At most one task may be running at any time.
-
-Starting a new task while another is running must:
-
-Commit elapsed time to the previous task
-
-Stop the previous task
-
-Start the new task
-
-Overlapping running tasks are not allowed.
-
-8. Display Format Contract
-
-All timers (task, session, campaign) must always render as:
-
-HH:MM:SS
-
-
-Including:
-
-Values under 1 minute (00:00:36)
-
-Values under 1 hour (00:05:10)
-
-No rounding to minutes, no adaptive formatting.
-
-9. Acceptance Guarantee
-
-If all rules above are enforced, the following become impossible:
-
-Time increasing when selecting tasks
-
-Time jumping after tab switch or reload
-
-Session totals contradicting task totals
-
-Tasks inheriting time from other tasks
-
-“Phantom” minutes appearing after pauses
-
-Auto-switching active tasks on reload
-
-Any future regression must violate one of the rules above.
+The fix ensures ALL accumulated session time is persisted to the database when ending a session, and clarifies the visual distinction between "actively timed" vs "selected for next" tasks.
