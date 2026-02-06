@@ -78,10 +78,15 @@ const CampaignSession = () => {
     }
   }, [id, user, navigate]);
 
-  // Calculate total time including current session
-  const totalTimeSeconds = useMemo(() => {
-    return (sessionState.campaignTotalTime * 60) + sessionState.sessionTime;
-  }, [sessionState.campaignTotalTime, sessionState.sessionTime]);
+  // Campaign total must be accurate to the second.
+  // We derive it from item totals (persisted seconds + current session seconds),
+  // rather than the DB campaign "minutes" field which is rounded.
+  const campaignTotalSeconds = useMemo(() => {
+    return items.reduce(
+      (sum, item) => sum + (item.time_spent || 0) + (itemSessionTimes[item.id] || 0),
+      0
+    );
+  }, [items, itemSessionTimes]);
 
   const handleSetParent = async (itemId: string, parentItemId: string | null) => {
     const result = await setItemParent(itemId, parentItemId);
@@ -236,7 +241,7 @@ const CampaignSession = () => {
             </div>
             <SessionClock
               label="Campaign Total"
-              timeInSeconds={totalTimeSeconds}
+              timeInSeconds={campaignTotalSeconds}
               variant="campaign"
               isActive={sessionState.isRunning}
             />
