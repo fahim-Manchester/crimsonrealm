@@ -179,7 +179,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
         ref={setNodeRef}
         style={style}
         className={cn(
-          "relative flex items-center gap-3 p-3 rounded-sm border transition-all",
+          "relative flex items-center gap-3 p-3 rounded-sm border transition-all focus-visible:outline-none focus-visible:ring-0 focus-within:outline-none",
           isDragging && "opacity-50 z-50",
           (isCompleted || isAbandoned) && "opacity-60",
           getItemStyles(),

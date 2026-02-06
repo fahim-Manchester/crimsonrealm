@@ -179,18 +179,21 @@ export function QuestItemList({
               const indentLevel = getIndentLevel(item, byId);
               const displaySeconds = aggregatedSecondsById.get(item.id) ?? getOwnSeconds(item);
               const hasChildren = childrenMap.has(item.id);
-              
-              // SIMPLIFIED: timedTaskId IS the selected task (no dual selection)
-              const isBeingTimed = timedTaskId === item.id;
-              // Fallback to index-based for backwards compatibility
-              const isCurrentByIndex = index === currentIndex;
+
+              // Single source of truth for UI highlight:
+              // 1) If a timed item exists, highlight it (running or paused)
+              // 2) Otherwise, highlight the selected item (if provided)
+              // 3) Otherwise, fall back to the currentIndex item (legacy)
+              const fallbackId = items[currentIndex]?.id;
+              const activeItemId = timedTaskId ?? selectedTaskId ?? fallbackId;
+              const isActive = !!activeItemId && item.id === activeItemId;
 
               return (
                 <SortableTaskItem
                   key={item.id}
                   item={item}
-                  isCurrentTask={isBeingTimed || (timedTaskId === undefined && isCurrentByIndex)}
-                  isSelected={isBeingTimed || (timedTaskId === undefined && isCurrentByIndex)}
+                  isCurrentTask={isActive}
+                  isSelected={isActive}
                   isTimerRunning={isTimerRunning}
                   indentLevel={indentLevel}
                   showAggregatedTime={hasChildren}
