@@ -260,7 +260,7 @@ const CampaignSession = () => {
           <div className="flex justify-center gap-4 flex-wrap">
             <Button
               size="lg"
-              onClick={sessionState.isRunning ? pauseTimer : startTimer}
+              onClick={() => sessionState.isRunning ? pauseTimer() : startTimer()}
               className={sessionState.isRunning 
                 ? "bg-accent hover:bg-accent/80" 
                 : "gothic-button-primary"
@@ -350,6 +350,8 @@ const CampaignSession = () => {
                 onUncheckItem={handleUncheckItem}
                 onUpdateTime={handleUpdateItemTime}
                 onMarkPermanent={handleMarkPermanent}
+                timedTaskId={sessionState.timedTaskId}
+                selectedTaskId={sessionState.selectedTaskId}
               />
             )}
           </div>

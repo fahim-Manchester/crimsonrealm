@@ -20,10 +20,8 @@ export function SessionClock({
     
     const pad = (n: number) => n.toString().padStart(2, '0');
     
-    if (hrs > 0) {
-      return `${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
-    }
-    return `${pad(mins)}:${pad(secs)}`;
+    // Always show HH:MM:SS format for consistency
+    return `${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
   };
 
   const variantStyles = {
