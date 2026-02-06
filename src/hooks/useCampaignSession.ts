@@ -125,22 +125,27 @@ export function useCampaignSession(campaign: Campaign | null) {
   }, [timerState.taskAccumulatedMs, timerState.runningSinceMs, tick]);
 
   // Compute per-item session times (derived from timestamps)
+  // FIXED: Show accumulated time for ALL items, not just timed item
+  // Only add running time if timer is genuinely running
   const itemSessionTimes = useMemo(() => {
     const times: ItemSessionTime = {};
-    const timedItem = timerState.timedTaskId ? items.find(i => i.id === timerState.timedTaskId) : null;
     
+    // Populate ALL items from their accumulated session time (committed ms)
     for (const [itemId, accumulatedMs] of Object.entries(timerState.itemAccumulatedMs)) {
       times[itemId] = Math.floor(accumulatedMs / 1000);
     }
     
-    // Add running time for currently timed item
-    if (timedItem && timerState.runningSinceMs) {
+    // Add running time ONLY for the currently timed item AND only if timer is running
+    // This is the key invariant: running time is only added to display, never to itemAccumulatedMs
+    // until an explicit user action (pause/switch/complete/end)
+    if (timerState.isRunning && timerState.timedTaskId && timerState.runningSinceMs) {
       const runningMs = Date.now() - timerState.runningSinceMs;
-      times[timedItem.id] = Math.floor(((timerState.itemAccumulatedMs[timedItem.id] || 0) + runningMs) / 1000);
+      const accumulatedMs = timerState.itemAccumulatedMs[timerState.timedTaskId] || 0;
+      times[timerState.timedTaskId] = Math.floor((accumulatedMs + runningMs) / 1000);
     }
     
     return times;
-  }, [items, timerState.timedTaskId, timerState.itemAccumulatedMs, timerState.runningSinceMs, tick]);
+  }, [timerState.isRunning, timerState.timedTaskId, timerState.itemAccumulatedMs, timerState.runningSinceMs, tick]);
 
   // Get current task index from timedTaskId (for backwards compatibility)
   const currentTaskIndex = useMemo(() => {
@@ -269,27 +274,53 @@ export function useCampaignSession(campaign: Campaign | null) {
   }, [timerState.isRunning, campaign?.id]);
 
   // Hydrate timer state on mount - BEFORE items fetch
+  // ENHANCED: Validate timer state sanity on reload to prevent hallucinated time
   useEffect(() => {
     if (!campaign || hydratedRef.current) return;
     
     const saved = loadTimerState(campaign.id);
     if (saved) {
-      // Validate: if runningSinceMs is more than 24 hours ago, clear it
-      // This prevents massive time jumps from stale localStorage
-      if (saved.runningSinceMs && (Date.now() - saved.runningSinceMs > 24 * 60 * 60 * 1000)) {
-        // Stale running state - pause it and accumulate what we can reasonably estimate
-        const staleMs = Date.now() - saved.runningSinceMs;
-        console.warn(`Timer was running for ${Math.floor(staleMs / 3600000)}h - clearing stale state`);
-        const clearedState = {
+      // GUARD 1: If isRunning but runningSinceMs is missing, force pause (corrupted state)
+      if (saved.isRunning && !saved.runningSinceMs) {
+        console.warn('Timer marked running but runningSinceMs missing - auto-pausing');
+        const pausedState: TimerState = {
           ...saved,
           isRunning: false,
-          runningSinceMs: null,
-          // Don't add the stale time - it's likely a mistake
+          runningSinceMs: null
         };
-        setTimerState(clearedState);
-        clearTimerState(campaign.id);
-      } else if (saved.isRunning && saved.runningSinceMs) {
-        // Valid running state - restore it
+        setTimerState(pausedState);
+        saveTimerState(campaign.id, pausedState);
+        if (saved.timedTaskId) setSelectedTaskId(saved.timedTaskId);
+        hydratedRef.current = true;
+        return;
+      }
+      
+      // GUARD 2: If runningSinceMs is stale (> 4 hours), auto-pause and show warning
+      // Do NOT auto-add the elapsed time - let user decide
+      if (saved.isRunning && saved.runningSinceMs) {
+        const elapsedMs = Date.now() - saved.runningSinceMs;
+        const elapsedHours = elapsedMs / 3600000;
+        
+        if (elapsedHours > 4) {
+          console.warn(`Timer was running for ${elapsedHours.toFixed(1)}h - auto-pausing without adding time`);
+          
+          // Pause without adding the stale time - user can manually adjust if needed
+          const pausedState: TimerState = {
+            ...saved,
+            isRunning: false,
+            runningSinceMs: null
+            // Importantly: NOT adding elapsedMs to accumulated values
+          };
+          
+          setTimerState(pausedState);
+          saveTimerState(campaign.id, pausedState);
+          if (saved.timedTaskId) setSelectedTaskId(saved.timedTaskId);
+          hydratedRef.current = true;
+          // Toast will be shown by the component if needed
+          return;
+        }
+        
+        // Valid running state (< 4 hours) - restore it
         setTimerState(saved);
         setTick(t => t + 1); // Trigger immediate calculation
       } else {
@@ -545,20 +576,35 @@ export function useCampaignSession(campaign: Campaign | null) {
   }, [timerState, campaign]);
 
   // Switch to a different task - ONLY affects timing if timer is running
+  // FIXED: Add guards to prevent double-counting and hallucinated time
   const switchToTask = useCallback(async (newTaskId: string) => {
     const currentItems = itemsRef.current;
     const newItem = currentItems.find(i => i.id === newTaskId);
     if (!newItem || newItem.status === 'completed' || newItem.status === 'abandoned') return;
     
     const currentState = timerStateRef.current;
+    
+    // GUARD: If timer was NOT actually running, just update selection - no time commits
+    if (!currentState.isRunning || !currentState.runningSinceMs) {
+      // Timer not running - just switch task ID, don't commit any time
+      setTimerState(prev => ({
+        ...prev,
+        timedTaskId: newTaskId,
+        taskAccumulatedMs: prev.itemAccumulatedMs[newTaskId] || 0
+      }));
+      setSelectedTaskId(newTaskId);
+      return;
+    }
+    
+    // Timer IS running - commit time to current item before switching
     const currentItem = currentState.timedTaskId 
       ? currentItems.find(i => i.id === currentState.timedTaskId)
       : null;
     
     const now = Date.now();
     
-    // Only save time if timer was running on a different task
-    if (currentState.isRunning && currentState.runningSinceMs && currentItem && currentItem.id !== newTaskId) {
+    // Only save time if we were timing a different task
+    if (currentItem && currentItem.id !== newTaskId) {
       const taskElapsedMs = currentState.taskAccumulatedMs + (now - currentState.runningSinceMs);
       const taskElapsedSeconds = Math.floor(taskElapsedMs / 1000);
       
@@ -576,25 +622,31 @@ export function useCampaignSession(campaign: Campaign | null) {
     }
     
     // Calculate session elapsed to accumulate before resetting
-    const sessionElapsedMs = currentState.runningSinceMs ? now - currentState.runningSinceMs : 0;
-    const newItemAccumulatedMs = timerState.itemAccumulatedMs[newTaskId] || 0;
+    const sessionElapsedMs = now - currentState.runningSinceMs;
+    const newItemAccumulatedMs = timerStateRef.current.itemAccumulatedMs[newTaskId] || 0;
     
-    // Switch to new task
-    setTimerState(prev => ({
-      ...prev,
-      timedTaskId: newTaskId,
-      taskAccumulatedMs: newItemAccumulatedMs,
-      sessionAccumulatedMs: prev.sessionAccumulatedMs + sessionElapsedMs,
-      runningSinceMs: prev.isRunning ? now : null,
-      // Mark current item's time as committed
-      itemAccumulatedMs: currentItem && prev.runningSinceMs ? {
-        ...prev.itemAccumulatedMs,
-        [currentItem.id]: (prev.itemAccumulatedMs[currentItem.id] || 0) + (now - prev.runningSinceMs)
-      } : prev.itemAccumulatedMs
-    }));
+    // Switch to new task - reset runningSinceMs to now, commit old item time to itemAccumulatedMs
+    setTimerState(prev => {
+      const updatedItemAccumulatedMs = { ...prev.itemAccumulatedMs };
+      
+      // Commit the running time for the old item
+      if (currentItem && prev.runningSinceMs) {
+        updatedItemAccumulatedMs[currentItem.id] = 
+          (prev.itemAccumulatedMs[currentItem.id] || 0) + (now - prev.runningSinceMs);
+      }
+      
+      return {
+        ...prev,
+        timedTaskId: newTaskId,
+        taskAccumulatedMs: newItemAccumulatedMs,
+        sessionAccumulatedMs: prev.sessionAccumulatedMs + sessionElapsedMs,
+        runningSinceMs: now, // Timer continues running on new task
+        itemAccumulatedMs: updatedItemAccumulatedMs
+      };
+    });
     
     setSelectedTaskId(newTaskId);
-  }, [timerState.itemAccumulatedMs, saveItemTime]);
+  }, [saveItemTime]);
 
   // Complete current task and move to next uncompleted
   const completeCurrentTask = useCallback(async () => {
@@ -1226,7 +1278,9 @@ export function useCampaignSession(campaign: Campaign | null) {
     setSelectedTaskId(taskId);
   }, [items]);
 
-  // Backwards-compatible setCurrentTaskIndex - now just selects + switches if running
+  // FIXED: setCurrentTaskIndex now ONLY updates selection - NEVER auto-switches timer
+  // This is the core fix for "time hallucinating when clicking tasks"
+  // Timer switching should only happen via explicit user actions (Play button, etc.)
   const setCurrentTaskIndex = useCallback((index: number) => {
     const targetItem = items[index];
     if (!targetItem) return;
@@ -1234,14 +1288,9 @@ export function useCampaignSession(campaign: Campaign | null) {
       return;
     }
     
-    // Always update selection
+    // ONLY update UI selection - never touch timer state
     setSelectedTaskId(targetItem.id);
-    
-    // If timer is running, switch to this task (saves current task time first)
-    if (timerState.isRunning && timerState.timedTaskId !== targetItem.id) {
-      switchToTask(targetItem.id);
-    }
-  }, [items, timerState.isRunning, timerState.timedTaskId, switchToTask]);
+  }, [items]);
 
   // Initialize
   useEffect(() => {
