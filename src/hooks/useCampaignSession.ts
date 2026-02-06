@@ -242,74 +242,29 @@ export function useCampaignSession(campaign: Campaign | null) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []); // Empty deps - handler uses refs
 
-  // Periodic commit to database while running (every ~90 seconds)
+  // Periodic persistence while running (NO database writes).
+  // The previous periodic DB commit rounded to minutes and also caused totals to drift/double-count.
+  // We only persist locally here; DB writes happen on explicit actions (pause/switch/complete/end).
   useEffect(() => {
     if (!timerState.isRunning || !campaign) return;
 
-    const intervalId = setInterval(async () => {
-      // Only commit if visible and enough time has passed
+    const intervalId = setInterval(() => {
+      // Avoid work in background tabs; we persist on visibility/pagehide too.
       if (document.visibilityState !== 'visible') return;
-      
+
       const now = Date.now();
       const msSinceLastCommit = now - lastCommitRef.current;
-      
       if (msSinceLastCommit < COMMIT_INTERVAL_MS) return;
-      
-      // Get current item by ID
-      const currentState = timerStateRef.current;
-      const currentItems = itemsRef.current;
-      const currentItem = currentState.timedTaskId 
-        ? currentItems.find(i => i.id === currentState.timedTaskId)
-        : null;
-        
-      if (!currentItem || !currentState.runningSinceMs) return;
 
-      const runningMs = now - currentState.runningSinceMs;
-      const secondsToCommit = Math.floor(runningMs / 1000);
-      
-      if (secondsToCommit < 60) return; // Only commit if at least 1 minute elapsed
-      
-      // Commit delta to campaign_item
-      await supabase
-        .from("campaign_items")
-        .update({ 
-          time_spent: (currentItem.time_spent || 0) + secondsToCommit
-        })
-        .eq("id", currentItem.id);
-      
-      // Update local item state
-      setItems(prev => prev.map(item => 
-        item.id === currentItem.id 
-          ? { ...item, time_spent: (item.time_spent || 0) + secondsToCommit }
-          : item
-      ));
-      
-      // Reset the "runningSinceMs" to now and update accumulated values
-      // IMPORTANT: Use functional update to get latest state
-      setTimerState(prev => {
-        const newState: TimerState = {
-          ...prev,
-          runningSinceMs: now,
-          // Don't double-count: the runningMs is already in the derived values
-          // We only need to reset the anchor
-          itemAccumulatedMs: {
-            ...prev.itemAccumulatedMs,
-            [currentItem.id]: (prev.itemAccumulatedMs[currentItem.id] || 0) + runningMs
-          }
-        };
-        
-        // Save to localStorage with the new state
-        const currentCampaign = campaignRef.current;
-        if (currentCampaign) {
-          saveTimerState(currentCampaign.id, newState);
-        }
-        
-        return newState;
-      });
-      
+      const currentState = timerStateRef.current;
+      const currentCampaign = campaignRef.current;
+      if (currentCampaign) {
+        saveTimerState(currentCampaign.id, currentState);
+      }
+
       lastCommitRef.current = now;
     }, 30_000); // Check every 30 seconds
-    
+
     return () => clearInterval(intervalId);
   }, [timerState.isRunning, campaign?.id]);
 
