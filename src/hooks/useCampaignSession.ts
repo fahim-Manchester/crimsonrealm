@@ -1305,25 +1305,24 @@ export function useCampaignSession(campaign: Campaign | null) {
     setSelectedTaskId(taskId);
   }, [items]);
 
-  // FIXED: setCurrentTaskIndex updates selection AND switches timer if running
-  // This is safe now because switchToTask() only commits to memory (not DB)
-  // All DB persistence happens in endSession()
+  // FIXED: setCurrentTaskIndex ALWAYS switches to the clicked task
+  // No more dual selection - clicking a task makes it the active one
+  // switchToTask handles both running (commits old time) and paused (just switches) cases
   const setCurrentTaskIndex = useCallback((index: number) => {
     const targetItem = items[index];
     if (!targetItem) return;
-    if (targetItem.status === 'completed' || targetItem.status === 'abandoned') {
-      return;
-    }
+    if (targetItem.status === 'completed' || targetItem.status === 'abandoned') return;
     
-    // Always update UI selection
-    setSelectedTaskId(targetItem.id);
-    
-    // If timer is running on a DIFFERENT task, switch the timer to this task
-    // This commits the old task's time to itemAccumulatedMs and starts timing the new task
     const currentState = timerStateRef.current;
-    if (currentState.isRunning && currentState.timedTaskId && currentState.timedTaskId !== targetItem.id) {
-      switchToTask(targetItem.id);
-    }
+    
+    // If already on this task, do nothing
+    if (currentState.timedTaskId === targetItem.id) return;
+    
+    // ALWAYS switch to the clicked task - whether timer is running or paused
+    // switchToTask handles both cases:
+    // - If running: commits old task time to memory, switches timer to new task
+    // - If paused: just switches task IDs without committing time
+    switchToTask(targetItem.id);
   }, [items, switchToTask]);
 
   // Initialize

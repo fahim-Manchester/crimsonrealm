@@ -147,26 +147,16 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
   };
 
   // Visual styling based on item type
-  // FIX: Single visual selection - when timer is running, only timed task gets strong highlight
+  // SIMPLIFIED: Only ONE task is ever highlighted - the one being timed/ready to time
+  // No more dashed borders or dual selection confusion
   const getItemStyles = () => {
     if (isCompleted) return "bg-accent/10 border-accent/30";
     if (isAbandoned) return "bg-destructive/10 border-destructive/30";
     
-    // Timed task (actively being timed) ALWAYS gets strong primary highlight
+    // The active/selected task - ONLY ONE task can be this at a time
     if (isCurrentTask) return "border-primary bg-primary/20 ring-2 ring-primary/30";
     
-    // Selected but NOT timed - behavior depends on whether timer is running
-    if (isHighlighted && !isCurrentTask) {
-      if (isTimerRunning) {
-        // Timer is running on another task - show subtle "next up" indicator (dashed border)
-        // This makes it clear that THIS task is NOT currently being timed
-        return "border-dashed border-muted-foreground/50 bg-muted/5";
-      }
-      // Timer is paused - selected task gets normal selection highlight
-      return "border-primary/50 bg-primary/10 ring-1 ring-primary/20";
-    }
-    
-    // Different styles for each type (when not selected)
+    // NOT the current task - show type-specific styles
     if (isTemporary && item.temporary_type === 'task') {
       // Pop-up Quest: warm amber/orange tint
       return "bg-amber-500/10 border-amber-500/40 hover:border-amber-500/60";
