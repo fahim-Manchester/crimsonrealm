@@ -1,110 +1,162 @@
 
-# Fix: Clicking Task While Timer Running Should Switch Timer
+# Fix: Seamless Task Switching (Remove Dual Selection Confusion)
 
-## Current Behavior
-When you click a task while the timer is running on another task:
-- The clicked task gets visually "selected" (subtle dashed border)
-- But the timer **continues running on the original task**
-- You have to pause, then unpause to actually switch
+## The Problem
 
-## Desired Behavior
-When you click a task while the timer is running:
-- The timer should **immediately switch** to the new task
-- The old task's time gets committed to memory
-- The new task starts accumulating time right away
+When you click a task:
+- **If timer is running**: It correctly switches the timer to the new task
+- **If timer is paused**: It only updates `selectedTaskId` (visual selection) but NOT `timedTaskId` (the actual task to time)
 
-## Root Cause
-In the previous fix, we made `setCurrentTaskIndex()` only update the visual selection (`selectedTaskId`) and never touch the timer. This was to prevent "hallucinated time" from stale states.
+This causes the confusing visual where:
+- Task 1 gets a dashed border (selected)
+- Task 2 still shows "ACTIVE" label (still marked as the timed task)
 
-However, this created a confusing UX where clicking a task doesn't actually switch to it.
+Both tasks appear "selected" in different ways - very confusing!
 
-## Solution
-Modify `setCurrentTaskIndex()` to:
-1. Always update the visual selection
-2. **If the timer is running**, also call `switchToTask()` to actually switch the timer
+---
 
-This is safe now because we fixed `switchToTask()` to:
-- Only commit time to memory (not database)
-- Properly reset the timer for the new task
-- Let `endSession()` handle all database persistence
+## The Solution
 
-## Implementation
+**Clicking a task should ALWAYS switch to it, regardless of whether the timer is running or paused.**
 
-### File: `src/hooks/useCampaignSession.ts`
+When you click a task:
+1. Switch `timedTaskId` to that task
+2. Switch `selectedTaskId` to that task  
+3. If timer was running on another task, commit its time to memory first
+4. If timer was paused, just switch the task ID (no time to commit)
 
-**Change `setCurrentTaskIndex` (Lines 1311-1320):**
+This means **only ONE task is ever highlighted** - the one that will be timed when you press Play.
 
-Current code:
+---
+
+## Visual Behavior After Fix
+
+**Timer paused:**
+- Click Task A → Task A is highlighted (red border), shows as ready to time
+- Press Resume → Timer starts on Task A
+
+**Timer running:**
+- Click Task B → Timer switches to Task B immediately
+- Task B is now highlighted (red border), Task A's time is committed
+
+**No more dashed borders. No dual selection. One task, one highlight.**
+
+---
+
+## Changes Required
+
+### File 1: `src/hooks/useCampaignSession.ts`
+
+**Modify `setCurrentTaskIndex()` (Lines 1311-1327):**
+
 ```typescript
 const setCurrentTaskIndex = useCallback((index: number) => {
   const targetItem = items[index];
   if (!targetItem) return;
-  if (targetItem.status === 'completed' || targetItem.status === 'abandoned') {
-    return;
-  }
+  if (targetItem.status === 'completed' || targetItem.status === 'abandoned') return;
   
-  // ONLY update UI selection - never touch timer state
-  setSelectedTaskId(targetItem.id);
-}, [items]);
-```
-
-New code:
-```typescript
-const setCurrentTaskIndex = useCallback((index: number) => {
-  const targetItem = items[index];
-  if (!targetItem) return;
-  if (targetItem.status === 'completed' || targetItem.status === 'abandoned') {
-    return;
-  }
-  
-  // Always update UI selection
-  setSelectedTaskId(targetItem.id);
-  
-  // If timer is running on a DIFFERENT task, switch the timer to this task
-  // This commits the old task's time to itemAccumulatedMs and starts timing the new task
   const currentState = timerStateRef.current;
-  if (currentState.isRunning && currentState.timedTaskId && currentState.timedTaskId !== targetItem.id) {
-    switchToTask(targetItem.id);
-  }
+  
+  // If already on this task, do nothing
+  if (currentState.timedTaskId === targetItem.id) return;
+  
+  // ALWAYS switch to the clicked task - whether timer is running or paused
+  // switchToTask handles both cases:
+  // - If running: commits old task time, switches timer to new task
+  // - If paused: just switches task IDs without committing time
+  switchToTask(targetItem.id);
 }, [items, switchToTask]);
 ```
 
-### Visual Clarity Fix
+The key insight: `switchToTask()` already handles both cases correctly:
+- Lines 589-597: If timer is NOT running, it just switches `timedTaskId` and `selectedTaskId`
+- Lines 600-631: If timer IS running, it commits time and switches
 
-Since clicking now switches the timer, there won't be a "selected but not timed" state during active timing. The visuals will be clearer:
-- **Timer running:** Only the actively timed task is highlighted (no confusing dual selection)
-- **Timer paused:** The selected task is highlighted (ready to start)
+So we just need to call `switchToTask()` unconditionally!
 
-## Why This is Safe Now
+### File 2: `src/components/campaigns/SortableTaskItem.tsx`
 
-Previously, this caused time hallucination because:
-1. `switchToTask()` was saving to the database mid-session
-2. `itemAccumulatedMs` values were getting double-counted
+**Simplify the styling logic (Lines 149-184):**
 
-Now it's safe because:
-1. `switchToTask()` only commits to memory (`itemAccumulatedMs`)
-2. Database saves only happen in `endSession()`
-3. Display correctly shows `accumulated + running` time
+Remove the dashed border logic entirely. Since clicking always switches the timer:
+- Only the timed task (`isCurrentTask`) ever gets highlighted
+- `isSelected` becomes redundant when timer is running (they're always the same)
+
+```typescript
+const getItemStyles = () => {
+  if (isCompleted) return "bg-accent/10 border-accent/30";
+  if (isAbandoned) return "bg-destructive/10 border-destructive/30";
+  
+  // The active/selected task - ONLY ONE task can be this at a time
+  if (isCurrentTask) return "border-primary bg-primary/20 ring-2 ring-primary/30";
+  
+  // NOT the current task - show type-specific styles
+  if (isTemporary && item.temporary_type === 'task') {
+    return "bg-amber-500/10 border-amber-500/40 hover:border-amber-500/60";
+  }
+  if (isTemporary && item.temporary_type === 'project') {
+    return "bg-purple-500/10 border-purple-500/40 hover:border-purple-500/60";
+  }
+  if (isTerritory) {
+    return "bg-accent/5 border-accent/40 hover:border-accent/60";
+  }
+  return "border-border/50 hover:border-border bg-card/50";
+};
+```
+
+**Remove unused prop handling:**
+- Remove the `isTimerRunning` check in styling (no longer needed)
+- The `isSelected` prop can remain for backwards compatibility but won't affect styling when timer is involved
+
+### File 3: `src/components/campaigns/QuestItemList.tsx`
+
+**Simplify the props passed (Lines 189-206):**
+
+Since `selectedTaskId` and `timedTaskId` are now always synced when you click:
+
+```typescript
+// Simplified: timedTaskId IS the selected task
+const isBeingTimed = timedTaskId === item.id;
+
+return (
+  <SortableTaskItem
+    key={item.id}
+    item={item}
+    isCurrentTask={isBeingTimed}
+    // isSelected can be removed or kept same as isCurrentTask
+    isSelected={isBeingTimed}
+    isTimerRunning={isTimerRunning}
+    // ... rest unchanged
+  />
+);
+```
+
+---
+
+## Summary of Changes
+
+| File | Change |
+|------|--------|
+| `useCampaignSession.ts` | `setCurrentTaskIndex()` always calls `switchToTask()` |
+| `SortableTaskItem.tsx` | Remove dashed border logic, simplify to single highlight |
+| `QuestItemList.tsx` | Sync `isSelected` with `isCurrentTask` |
+
+---
+
+## Behavior After Fix
+
+1. **Click any task** → That task becomes the "active" one with red border
+2. **Press Play** → Timer starts on that task
+3. **Click another task while running** → Timer switches immediately
+4. **No dashed borders**, no dual selection, no confusion
+
+---
 
 ## Test Cases
 
-### Test 1: Switch Tasks While Running
-1. Start timer on Task A
-2. Wait 10 seconds
-3. Click Task B
-4. **Expected:** Task A shows 10s frozen, Task B starts counting from 0, timer continues running
-
-### Test 2: Rapid Clicking While Running
-1. Start timer on Task A
-2. Click Task B, then Task C within 5 seconds
-3. End session
-4. **Expected:** Task A has ~0-2s, Task B has ~2-4s, Task C has rest. Totals match.
-
-### Test 3: Visual Clarity
-1. Start timer on Task A
-2. Click Task B
-3. **Expected:** Task B is now the ONLY highlighted task (no dual selection)
-
-## Summary
-
-This change restores the intuitive behavior where clicking a task while the timer is running immediately switches to that task, while maintaining all the safety fixes we implemented for time tracking accuracy.
+| Test | Expected |
+|------|----------|
+| Timer paused, click Task B | Only Task B is highlighted (red border) |
+| Press Resume | Timer starts on Task B |
+| Click Task C while running | Task C becomes highlighted, Task B's time is saved to memory |
+| End session | All task times are saved to database |
