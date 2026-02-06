@@ -1,294 +1,110 @@
 
-# Timer Bug Fix Plan - Complete Resolution
+# Fix: Clicking Task While Timer Running Should Switch Timer
 
-## Summary of Issues Found
+## Current Behavior
+When you click a task while the timer is running on another task:
+- The clicked task gets visually "selected" (subtle dashed border)
+- But the timer **continues running on the original task**
+- You have to pause, then unpause to actually switch
 
-After analyzing the code and your video recordings, I've identified **3 critical bugs**:
+## Desired Behavior
+When you click a task while the timer is running:
+- The timer should **immediately switch** to the new task
+- The old task's time gets committed to memory
+- The new task starts accumulating time right away
 
-### Bug 1: Dual Selection Visual Confusion
-When clicking a new task while the timer runs on another, **both tasks appear highlighted** because:
-- `isCurrentTask` (the timed task) shows a strong primary highlight
-- `isSelected` (the clicked task) shows a lighter primary highlight
-- Users expect only ONE item to be visually "active"
+## Root Cause
+In the previous fix, we made `setCurrentTaskIndex()` only update the visual selection (`selectedTaskId`) and never touch the timer. This was to prevent "hallucinated time" from stale states.
 
-### Bug 2: Time Data Loss on Session End (Critical)
-When ending a session after switching tasks, **time from previous tasks is lost**:
-- `switchToTask()` commits running time to `itemAccumulatedMs[oldTask]`
-- But `endSession()` only saves `taskAccumulatedMs` for the current task
-- All time accumulated in `itemAccumulatedMs` for OTHER tasks is **never persisted to the database**
+However, this created a confusing UX where clicking a task doesn't actually switch to it.
 
-This is why Task 2's progress gets "erased" - it was actually Task 1's time that was lost and never saved.
+## Solution
+Modify `setCurrentTaskIndex()` to:
+1. Always update the visual selection
+2. **If the timer is running**, also call `switchToTask()` to actually switch the timer
 
-### Bug 3: Session Total Glitches
-A consequence of Bug 2 - incomplete persistence causes mismatched totals.
+This is safe now because we fixed `switchToTask()` to:
+- Only commit time to memory (not database)
+- Properly reset the timer for the new task
+- Let `endSession()` handle all database persistence
 
----
+## Implementation
 
-## Solution Plan
+### File: `src/hooks/useCampaignSession.ts`
 
-### Fix 1: Single Visual Selection (Clarify UI Intent)
+**Change `setCurrentTaskIndex` (Lines 1311-1320):**
 
-**Problem**: Two different highlights cause confusion.
-
-**Solution**: When the timer is running, the **timed task** should always appear as the primary selection. The `selectedTaskId` should only affect which task STARTS timing when you press Play.
-
-Changes to `SortableTaskItem.tsx`:
-- Modify the highlighting logic so that during active timing, ONLY the timed task gets the "active" highlight
-- The selected task (when different from timed) gets a subtle "will start next" indicator instead of looking selected
-
-**Current styling logic:**
+Current code:
 ```typescript
-if (isCurrentTask) return "border-primary bg-primary/20 ring-2 ring-primary/30";  // Timed
-if (isHighlighted && !isCurrentTask) return "border-primary/50 bg-primary/10 ring-1 ring-primary/20";  // Selected
-```
-
-**New styling logic:**
-```typescript
-// If timer is running, only the timed task gets primary highlight
-// Selected-but-not-timed gets a very subtle "next up" indicator (dashed border, no ring)
-if (isCurrentTask) return "border-primary bg-primary/20 ring-2 ring-primary/30";
-if (isHighlighted && !isCurrentTask && !isTimerRunning) {
-  return "border-primary/50 bg-primary/10 ring-1 ring-primary/20";  // Only when paused
-}
-if (isHighlighted && !isCurrentTask && isTimerRunning) {
-  return "border-dashed border-muted-foreground/50";  // Subtle "next" indicator
-}
-```
-
-Add `isTimerRunning` prop to `SortableTaskItem` to know if any task is currently being timed.
-
----
-
-### Fix 2: Save ALL Accumulated Item Times on Session End (Critical)
-
-**Problem**: `endSession()` only saves the current task's time, losing time from other tasks worked on during the session.
-
-**Solution**: Iterate through ALL items in `itemAccumulatedMs` and save each one's accumulated time.
-
-Changes to `useCampaignSession.ts` - `endSession()`:
-
-**Current (broken):**
-```typescript
-const endSession = useCallback(async () => {
-  pauseTimer();
-  
-  const currentTaskTimeSeconds = Math.floor(currentState.taskAccumulatedMs / 1000);
-  
-  if (currentItem && currentTaskTimeSeconds > 0) {
-    await saveItemTime(currentItem, currentTaskTimeSeconds);  // Only saves ONE task
+const setCurrentTaskIndex = useCallback((index: number) => {
+  const targetItem = items[index];
+  if (!targetItem) return;
+  if (targetItem.status === 'completed' || targetItem.status === 'abandoned') {
+    return;
   }
+  
+  // ONLY update UI selection - never touch timer state
+  setSelectedTaskId(targetItem.id);
+}, [items]);
 ```
 
-**Fixed:**
+New code:
 ```typescript
-const endSession = useCallback(async () => {
-  // First, pause timer to commit running time to itemAccumulatedMs
-  pauseTimer();
+const setCurrentTaskIndex = useCallback((index: number) => {
+  const targetItem = items[index];
+  if (!targetItem) return;
+  if (targetItem.status === 'completed' || targetItem.status === 'abandoned') {
+    return;
+  }
   
+  // Always update UI selection
+  setSelectedTaskId(targetItem.id);
+  
+  // If timer is running on a DIFFERENT task, switch the timer to this task
+  // This commits the old task's time to itemAccumulatedMs and starts timing the new task
   const currentState = timerStateRef.current;
-  const currentItems = itemsRef.current;
-  
-  // Save time for ALL items that accumulated time this session
-  for (const [itemId, accumulatedMs] of Object.entries(currentState.itemAccumulatedMs)) {
-    const timeSeconds = Math.floor(accumulatedMs / 1000);
-    if (timeSeconds <= 0) continue;
-    
-    const item = currentItems.find(i => i.id === itemId);
-    if (!item) continue;
-    
-    await saveItemTime(item, timeSeconds);
-    
-    // Update local state
-    setItems(prev => prev.map(i => 
-      i.id === itemId 
-        ? { ...i, time_spent: (i.time_spent || 0) + timeSeconds }
-        : i
-    ));
+  if (currentState.isRunning && currentState.timedTaskId && currentState.timedTaskId !== targetItem.id) {
+    switchToTask(targetItem.id);
   }
-  
-  // ... rest of function
+}, [items, switchToTask]);
 ```
 
----
+### Visual Clarity Fix
 
-### Fix 3: Apply Same Fix to `startNewSession()`
+Since clicking now switches the timer, there won't be a "selected but not timed" state during active timing. The visuals will be clearer:
+- **Timer running:** Only the actively timed task is highlighted (no confusing dual selection)
+- **Timer paused:** The selected task is highlighted (ready to start)
 
-The `startNewSession()` function has the same bug - it only saves the current task's time.
+## Why This is Safe Now
 
-Apply identical fix: iterate through `itemAccumulatedMs` and save all items.
+Previously, this caused time hallucination because:
+1. `switchToTask()` was saving to the database mid-session
+2. `itemAccumulatedMs` values were getting double-counted
 
----
-
-### Fix 4: Prevent Double-Saving in switchToTask()
-
-Currently, `switchToTask()` calls `saveItemTime()` for the old task when switching. This is fine, but we need to ensure `endSession()` doesn't save it again.
-
-After saving in `switchToTask()`, we should clear that item from `itemAccumulatedMs`:
-
-```typescript
-// After saving old item's time, clear its accumulated ms to prevent double-save
-setTimerState(prev => {
-  const updatedItemAccumulatedMs = { ...prev.itemAccumulatedMs };
-  delete updatedItemAccumulatedMs[oldItemId];  // Already saved, don't save again
-  
-  return {
-    ...prev,
-    // ...
-    itemAccumulatedMs: updatedItemAccumulatedMs
-  };
-});
-```
-
-Wait - looking more carefully at the current code, `switchToTask()` DOES save to DB and update local items, but it also keeps the value in `itemAccumulatedMs`. This causes potential double-saving.
-
-**Better approach**: Instead of saving in `switchToTask()`, just commit to `itemAccumulatedMs` and let `endSession()` handle all DB saves. This is cleaner and avoids race conditions.
-
-Changes to `switchToTask()`:
-- Remove the `saveItemTime()` call
-- Remove the `setItems()` update
-- Just commit to `itemAccumulatedMs` and switch tasks
-- All persistence happens in `endSession()`
-
----
-
-### Fix 5: Ensure pauseTimer() Commits Running Time Correctly
-
-The `pauseTimer()` function commits running time to `itemAccumulatedMs`. This needs to be called BEFORE reading `itemAccumulatedMs` in `endSession()`.
-
-Current code already calls `pauseTimer()` first, but we need to ensure the state is updated synchronously. Use a ref-based approach:
-
-```typescript
-const endSession = useCallback(async () => {
-  // Pause and commit running time
-  pauseTimer();
-  
-  // IMPORTANT: Read from ref to get post-pause state
-  // React state updates are async, but we update ref synchronously in pauseTimer
-  await new Promise(r => setTimeout(r, 0));  // Allow state to settle
-  
-  const finalState = timerStateRef.current;
-  // Now finalState.itemAccumulatedMs includes the committed running time
-```
-
-Actually, the current `pauseTimer()` sets state asynchronously, so `timerStateRef.current` might not have the new values immediately. We need to compute the final values inline:
-
-```typescript
-const endSession = useCallback(async () => {
-  const now = Date.now();
-  const currentState = timerStateRef.current;
-  
-  // Compute what pauseTimer WOULD commit
-  const elapsedSinceStart = currentState.isRunning && currentState.runningSinceMs 
-    ? now - currentState.runningSinceMs 
-    : 0;
-  
-  const finalItemAccumulatedMs = { ...currentState.itemAccumulatedMs };
-  if (currentState.timedTaskId && elapsedSinceStart > 0) {
-    finalItemAccumulatedMs[currentState.timedTaskId] = 
-      (finalItemAccumulatedMs[currentState.timedTaskId] || 0) + elapsedSinceStart;
-  }
-  
-  // Now save ALL items
-  for (const [itemId, accumulatedMs] of Object.entries(finalItemAccumulatedMs)) {
-    // ...save each item
-  }
-  
-  // Then clear state
-  pauseTimer();
-```
-
----
-
-## Files to Modify
-
-### 1. `src/hooks/useCampaignSession.ts`
-
-**endSession() - Lines ~910-953:**
-- Compute final accumulated values inline (including running time)
-- Iterate through ALL items in itemAccumulatedMs
-- Save each item's accumulated time to database
-- Prevent double-saving
-
-**startNewSession() - Lines ~956-1012:**
-- Apply same fix as endSession()
-
-**switchToTask() - Lines ~580-649:**
-- Remove DB save call (saveItemTime)
-- Remove local items update
-- Keep only the itemAccumulatedMs commit
-- This ensures all persistence is handled by endSession()
-
-### 2. `src/components/campaigns/SortableTaskItem.tsx`
-
-**Add new prop:**
-- `isTimerRunning?: boolean` - whether any timer is currently running
-
-**Update styling logic - Lines ~148-175:**
-- When timer is running, only timed task gets strong highlight
-- Selected-but-not-timed task gets subtle "next up" indicator
-
-### 3. `src/components/campaigns/QuestItemList.tsx`
-
-**Pass isTimerRunning prop - Lines ~188-204:**
-- Add prop to know if timer is running globally
-
-### 4. `src/pages/CampaignSession.tsx`
-
-**No changes needed** - already passes timedTaskId and selectedTaskId correctly
-
----
-
-## Technical Details
-
-### New State Flow for Time Persistence
-
-1. **Start Timer**: Set `runningSinceMs = Date.now()`, set `timedTaskId`
-2. **While Running**: Display shows `itemAccumulatedMs[id] + (now - runningSinceMs)` for timed task
-3. **Pause Timer**: Commit running time to `itemAccumulatedMs[timedTaskId]`, clear `runningSinceMs`
-4. **Switch Task (while running)**: Commit old task's time to `itemAccumulatedMs[oldTaskId]`, set new `timedTaskId`, reset `runningSinceMs = now`
-5. **End Session**: 
-   - Compute final values (including any running time)
-   - For each item in `itemAccumulatedMs`: save to DB
-   - Clear localStorage
-
-### Invariants to Maintain
-
-1. **itemAccumulatedMs never includes running time** - running time is only added for display
-2. **All DB saves happen in endSession/startNewSession** - no mid-session DB writes for time
-3. **switchToTask only commits to itemAccumulatedMs** - no DB saves
-4. **Single visual selection** - during timing, only timed task is highlighted
-
----
+Now it's safe because:
+1. `switchToTask()` only commits to memory (`itemAccumulatedMs`)
+2. Database saves only happen in `endSession()`
+3. Display correctly shows `accumulated + running` time
 
 ## Test Cases
 
-### Test 1: Switch Tasks and End Session
-1. Start timer on Task A, wait 10 seconds
-2. Click Task B to switch (while running)
-3. Wait 15 seconds on Task B
-4. End session
-5. **Expected**: Task A shows +10s, Task B shows +15s, both saved to DB
-
-### Test 2: Rapid Task Switching
-1. Start timer
-2. Click Task A, B, C rapidly (switching while running)
-3. End session
-4. **Expected**: Each task shows only time actually spent on it, totals match
-
-### Test 3: Visual Selection Clarity
+### Test 1: Switch Tasks While Running
 1. Start timer on Task A
-2. Click Task B (while timer runs)
-3. **Expected**: Task A has strong "ACTIVE" highlight, Task B has subtle "next up" indicator
+2. Wait 10 seconds
+3. Click Task B
+4. **Expected:** Task A shows 10s frozen, Task B starts counting from 0, timer continues running
 
-### Test 4: Return to Campaign
-1. Work on multiple tasks, end session
-2. Navigate away and return to campaign
-3. **Expected**: All task times match what was displayed before leaving
+### Test 2: Rapid Clicking While Running
+1. Start timer on Task A
+2. Click Task B, then Task C within 5 seconds
+3. End session
+4. **Expected:** Task A has ~0-2s, Task B has ~2-4s, Task C has rest. Totals match.
 
----
+### Test 3: Visual Clarity
+1. Start timer on Task A
+2. Click Task B
+3. **Expected:** Task B is now the ONLY highlighted task (no dual selection)
 
 ## Summary
 
-The core issue is that **`endSession()` only saves time for the currently timed task**, while time spent on OTHER tasks during the session (stored in `itemAccumulatedMs`) is lost forever.
-
-The fix ensures ALL accumulated session time is persisted to the database when ending a session, and clarifies the visual distinction between "actively timed" vs "selected for next" tasks.
+This change restores the intuitive behavior where clicking a task while the timer is running immediately switches to that task, while maintaining all the safety fixes we implemented for time tracking accuracy.
