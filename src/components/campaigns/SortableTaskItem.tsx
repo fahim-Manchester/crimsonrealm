@@ -12,6 +12,7 @@ interface SortableTaskItemProps {
   item: CampaignItem;
   isCurrentTask: boolean; // Is this the task being timed?
   isSelected?: boolean; // Is this the task selected in UI? (separate from timing)
+  isTimerRunning?: boolean; // NEW: Is any timer currently running?
   onSelect: () => void;
   onUncheck?: () => void;
   onUpdateTime?: (minutes: number) => void;
@@ -48,6 +49,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
   item, 
   isCurrentTask, // Task being timed
   isSelected, // Task selected in UI (may differ from isCurrentTask)
+  isTimerRunning = false, // NEW: Is any timer currently running globally?
   onSelect, 
   onUncheck,
   onUpdateTime,
@@ -145,19 +147,26 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
   };
 
   // Visual styling based on item type
+  // FIX: Single visual selection - when timer is running, only timed task gets strong highlight
   const getItemStyles = () => {
     if (isCompleted) return "bg-accent/10 border-accent/30";
     if (isAbandoned) return "bg-destructive/10 border-destructive/30";
     
-    // Timed task (actively running) gets strong primary highlight
+    // Timed task (actively being timed) ALWAYS gets strong primary highlight
     if (isCurrentTask) return "border-primary bg-primary/20 ring-2 ring-primary/30";
     
-    // Selected but not timed task gets subtle highlight
+    // Selected but NOT timed - behavior depends on whether timer is running
     if (isHighlighted && !isCurrentTask) {
+      if (isTimerRunning) {
+        // Timer is running on another task - show subtle "next up" indicator (dashed border)
+        // This makes it clear that THIS task is NOT currently being timed
+        return "border-dashed border-muted-foreground/50 bg-muted/5";
+      }
+      // Timer is paused - selected task gets normal selection highlight
       return "border-primary/50 bg-primary/10 ring-1 ring-primary/20";
     }
     
-    // Different styles for each type
+    // Different styles for each type (when not selected)
     if (isTemporary && item.temporary_type === 'task') {
       // Pop-up Quest: warm amber/orange tint
       return "bg-amber-500/10 border-amber-500/40 hover:border-amber-500/60";

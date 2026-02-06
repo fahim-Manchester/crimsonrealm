@@ -79,6 +79,7 @@ interface QuestItemListProps {
   onMarkPermanent?: (itemId: string) => void;
   timedTaskId?: string | null; // NEW: Which task is actually being timed
   selectedTaskId?: string | null; // NEW: Which task is selected in UI
+  isTimerRunning?: boolean; // NEW: Is any timer currently running?
 }
 
 export function QuestItemList({
@@ -93,6 +94,7 @@ export function QuestItemList({
   onMarkPermanent,
   timedTaskId,
   selectedTaskId,
+  isTimerRunning = false,
 }: QuestItemListProps) {
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   
@@ -190,6 +192,7 @@ export function QuestItemList({
                   item={item}
                   isCurrentTask={isBeingTimed || (timedTaskId === undefined && isCurrentByIndex)}
                   isSelected={isSelected || (selectedTaskId === undefined && isCurrentByIndex)}
+                  isTimerRunning={isTimerRunning}
                   indentLevel={indentLevel}
                   showAggregatedTime={hasChildren}
                   displayTimeSeconds={displaySeconds}

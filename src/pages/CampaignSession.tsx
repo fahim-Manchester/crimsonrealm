@@ -357,6 +357,7 @@ const CampaignSession = () => {
                 onMarkPermanent={handleMarkPermanent}
                 timedTaskId={sessionState.timedTaskId}
                 selectedTaskId={sessionState.selectedTaskId}
+                isTimerRunning={sessionState.isRunning}
               />
             )}
           </div>
