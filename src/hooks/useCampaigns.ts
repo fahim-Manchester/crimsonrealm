@@ -214,18 +214,20 @@ export function useCampaigns() {
       return null;
     }
 
-    // Add tasks to campaign
+    // Add tasks to campaign (explicit is_temporary: false to avoid NULL constraint violation)
     const taskItems = taskIds.map((taskId, index) => ({
       campaign_id: campaign.id,
       task_id: taskId,
-      display_order: index
+      display_order: index,
+      is_temporary: false
     }));
 
-    // Add projects to campaign
+    // Add projects to campaign (explicit is_temporary: false to avoid NULL constraint violation)
     const projectItems = projectIds.map((projectId, index) => ({
       campaign_id: campaign.id,
       project_id: projectId,
-      display_order: taskIds.length + index
+      display_order: taskIds.length + index,
+      is_temporary: false
     }));
 
     // Add temporary items (Pop-up Quests and Hidden Territories)
