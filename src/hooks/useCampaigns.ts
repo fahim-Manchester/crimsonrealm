@@ -229,10 +229,11 @@ export function useCampaigns() {
     }));
 
     // Add temporary items (Pop-up Quests and Hidden Territories)
+    // Convert creator types to database types: popup_quest → task, hidden_territory → project
     const tempItems = temporaryItems.map((item, index) => ({
       campaign_id: campaign.id,
       is_temporary: true,
-      temporary_type: item.type,
+      temporary_type: item.type === "popup_quest" ? "task" : "project",
       temporary_name: item.name,
       temporary_description: item.description,
       display_order: taskIds.length + projectIds.length + index
