@@ -242,10 +242,14 @@ export function CampaignCard({
                 }`}
               >
                 <span className="text-xs">
-                  {item.task_id ? "⚒️" : "🗺️"}
+                  {item.is_temporary 
+                    ? (item.temporary_type === 'task' ? "⚡" : "🌙")
+                    : (item.task_id ? "⚒️" : "🗺️")}
                 </span>
                 <span className="flex-1 truncate">
-                  {item.task?.title || item.project?.name || "Unknown"}
+                  {item.is_temporary 
+                    ? (item.temporary_name || "Untitled")
+                    : (item.task?.title || item.project?.name || "Unknown")}
                 </span>
                 {item.task?.time_logged && item.task.time_logged > 0 && (
                   <span className="text-xs text-muted-foreground">
