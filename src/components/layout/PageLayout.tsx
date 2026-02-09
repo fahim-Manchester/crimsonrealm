@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
+import InstallButton from "@/components/pwa/InstallButton";
 
 interface PageLayoutProps {
   children: ReactNode;
@@ -45,6 +46,7 @@ const PageLayout = ({ children, title, subtitle }: PageLayoutProps) => {
             REALM
           </Link>
           <nav className="flex items-center gap-4">
+            <InstallButton />
             <Link to="/home" className="font-crimson text-muted-foreground hover:text-foreground transition-colors">
               Sanctum
             </Link>
