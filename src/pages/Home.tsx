@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
 import { Settings } from "lucide-react";
+import InstallButton from "@/components/pwa/InstallButton";
 
 const Home = () => {
   const navigate = useNavigate();
@@ -47,6 +48,7 @@ const Home = () => {
             <div className="hidden md:block font-crimson text-muted-foreground">
               {user?.email}
             </div>
+            <InstallButton />
             <Link 
               to="/settings"
               className="p-2 rounded-sm hover:bg-primary/10 transition-colors"
