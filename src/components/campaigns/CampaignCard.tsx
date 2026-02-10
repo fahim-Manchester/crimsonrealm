@@ -131,7 +131,7 @@ export function CampaignCard({
           </p>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap justify-end">
           {!isCompleted && (
             <>
               <Button

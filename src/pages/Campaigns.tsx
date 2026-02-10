@@ -180,7 +180,7 @@ const Campaigns = () => {
       {/* Content */}
       <div className="relative z-10 min-h-screen">
         {/* Header */}
-        <header className="flex items-center justify-between px-6 md:px-12 py-6 border-b border-border/30">
+        <header className="flex items-center justify-between px-4 md:px-12 py-4 md:py-6 border-b border-border/30">
           <div className="flex items-center gap-4">
             <Link to="/home" className="text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-5 h-5" />
@@ -198,9 +198,9 @@ const Campaigns = () => {
         </header>
 
         {/* Main */}
-        <main className="px-6 md:px-12 py-8 max-w-6xl mx-auto">
+        <main className="px-4 md:px-12 py-6 md:py-8 max-w-6xl mx-auto">
           {/* Hero */}
-          <div className="text-center mb-10">
+          <div className="text-center mb-6 md:mb-10">
             <h2 className="text-gothic-title text-2xl md:text-3xl mb-3">
               Rally Your <span className="text-primary">Forces</span>
             </h2>

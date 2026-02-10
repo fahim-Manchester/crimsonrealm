@@ -205,7 +205,7 @@ const CampaignSession = () => {
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               variant="outline"
               size="sm"
@@ -213,23 +213,24 @@ const CampaignSession = () => {
               className="border-primary/50 text-primary hover:bg-primary/10"
               disabled={sessionState.isRunning}
             >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              New Session
+              <RotateCcw className="w-4 h-4 md:mr-2" />
+              <span className="hidden md:inline">New Session</span>
             </Button>
             <Button
               variant="outline"
+              size="sm"
               onClick={handleEndSession}
               className="border-destructive/50 text-destructive hover:bg-destructive/10"
             >
-              <LogOut className="w-4 h-4 mr-2" />
-              End Session
+              <LogOut className="w-4 h-4 md:mr-2" />
+              <span className="hidden md:inline">End Session</span>
             </Button>
           </div>
         </header>
 
         {/* Clocks Section */}
         <section className="px-4 md:px-8 py-6 md:py-10">
-          <div className="grid grid-cols-4 gap-3 md:gap-6 max-w-4xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 max-w-4xl mx-auto">
             {/* Session Number */}
             <div className="flex flex-col items-center justify-center p-3 md:p-4 rounded-lg bg-card/30 border border-border/30">
               <span className="text-2xl md:text-4xl font-cinzel font-bold text-primary">
