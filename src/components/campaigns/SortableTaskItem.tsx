@@ -179,7 +179,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
         ref={setNodeRef}
         style={style}
         className={cn(
-          "relative flex items-center gap-3 p-3 rounded-sm border transition-all focus-visible:outline-none focus-visible:ring-0 focus-within:outline-none",
+          "relative flex items-center gap-2 p-2 md:gap-3 md:p-3 rounded-sm border transition-all focus-visible:outline-none focus-visible:ring-0 focus-within:outline-none",
           isDragging && "opacity-50 z-50",
           (isCompleted || isAbandoned) && "opacity-60",
           getItemStyles(),
@@ -254,7 +254,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
         )}
       
         <span className={cn(
-          "flex-1 font-crimson text-sm truncate",
+          "flex-1 min-w-0 font-crimson text-sm truncate",
           isCompleted && "line-through",
           isAbandoned && "line-through text-muted-foreground",
           isTemporary && item.temporary_type === 'task' && "text-amber-200/90",
@@ -263,7 +263,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
           {title}
           {isTemporary && (
             <span className={cn(
-              "text-[10px] ml-1.5 px-1.5 py-0.5 rounded-sm font-cinzel tracking-wide",
+              "text-[10px] ml-1.5 px-1.5 py-0.5 rounded-sm font-cinzel tracking-wide hidden md:inline",
               item.temporary_type === 'task' 
                 ? "bg-amber-500/20 text-amber-400" 
                 : "bg-purple-500/20 text-purple-400"

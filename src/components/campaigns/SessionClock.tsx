@@ -38,15 +38,15 @@ export function SessionClock({
 
   return (
     <div className={cn(
-      "flex flex-col items-center p-4 md:p-6 rounded-sm border-2 transition-all duration-500",
+      "flex flex-col items-center p-2 md:p-6 rounded-sm border-2 transition-all duration-500",
       variantStyles[variant],
       isActive && glowStyles[variant]
     )}>
-      <span className="font-cinzel text-xs md:text-sm tracking-widest uppercase text-muted-foreground mb-2">
+      <span className="font-cinzel text-[10px] md:text-sm tracking-widest uppercase text-muted-foreground mb-1 md:mb-2 text-center leading-tight">
         {label}
       </span>
       <span className={cn(
-        "font-cinzel text-2xl md:text-4xl tracking-wider tabular-nums",
+        "font-cinzel text-lg md:text-4xl tracking-wider tabular-nums",
         isActive && "animate-pulse"
       )}>
         {formatTime(timeInSeconds)}
