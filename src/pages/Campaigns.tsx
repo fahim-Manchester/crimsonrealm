@@ -48,7 +48,7 @@ const Campaigns = () => {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8, // Require 8px movement before dragging starts
+        distance: 15, // Require 15px movement before dragging starts (prevents accidental drags on mobile scroll)
       },
     })
   );
@@ -149,7 +149,7 @@ const Campaigns = () => {
   const completedCampaigns = campaigns.filter(c => c.status === "completed");
 
   const renderCampaignGrid = (campaignList: Campaign[], showReset: boolean = false) => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 px-2 md:px-0">
       {campaignList.map(campaign => (
         <DraggableCampaignCard
           key={campaign.id}
