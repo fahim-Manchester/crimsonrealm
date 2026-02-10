@@ -103,18 +103,18 @@ export function CampaignCard({
   };
 
   return (
-    <div className={`gothic-card p-4 transition-all duration-300 ${
+    <div className={`gothic-card p-3 md:p-4 transition-all duration-300 ${
       isActive ? "border-primary ring-2 ring-primary/30" : ""
     } ${isCompleted ? "opacity-60" : ""}`}>
       {/* Header */}
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div className="flex items-start justify-between gap-2 md:gap-3 mb-2 md:mb-3">
         <div 
           className="flex-1 cursor-pointer"
           onClick={() => setExpanded(!expanded)}
         >
           <div className="flex items-center gap-2 mb-1">
             <span className={difficulty.color}>{difficulty.emoji}</span>
-            <h3 className="font-cinzel text-base tracking-wide text-foreground">
+            <h3 className="font-cinzel text-sm md:text-base tracking-wide text-foreground">
               {campaign.name}
             </h3>
             {isCompleted && (
@@ -131,38 +131,38 @@ export function CampaignCard({
           </p>
         </div>
 
-        <div className="flex items-center gap-1 flex-wrap justify-end">
+        <div className="flex items-center gap-0.5 md:gap-1 flex-wrap justify-end">
           {!isCompleted && (
             <>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => onEdit(campaign)}
-                className="h-8 w-8 p-0 hover:bg-muted/30"
+                className="h-7 w-7 md:h-8 md:w-8 p-0 hover:bg-muted/30"
                 title="Edit Campaign"
               >
-                <Pencil className="w-4 h-4 text-muted-foreground" />
+                <Pencil className="w-3.5 h-3.5 md:w-4 md:h-4 text-muted-foreground" />
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleOpenSession}
-                className="h-8 w-8 p-0 hover:bg-accent/20"
+                className="h-7 w-7 md:h-8 md:w-8 p-0 hover:bg-accent/20"
                 title="Open Campaign Session"
               >
-                <Compass className="w-4 h-4 text-accent" />
+                <Compass className="w-3.5 h-3.5 md:w-4 md:h-4 text-accent" />
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => onStart(campaign.id)}
-                className="h-8 w-8 p-0 hover:bg-primary/20"
+                className="h-7 w-7 md:h-8 md:w-8 p-0 hover:bg-primary/20"
                 title={isActive ? "Pause Campaign" : "Start Campaign"}
               >
                 {isActive ? (
-                  <Pause className="w-4 h-4 text-primary" />
+                  <Pause className="w-3.5 h-3.5 md:w-4 md:h-4 text-primary" />
                 ) : (
-                  <Play className="w-4 h-4 text-primary" />
+                  <Play className="w-3.5 h-3.5 md:w-4 md:h-4 text-primary" />
                 )}
               </Button>
               {isRoutine && onReset && (
@@ -170,20 +170,20 @@ export function CampaignCard({
                   variant="ghost"
                   size="sm"
                   onClick={() => onReset(campaign.id)}
-                  className="h-8 w-8 p-0 hover:bg-accent/20"
+                  className="h-7 w-7 md:h-8 md:w-8 p-0 hover:bg-accent/20"
                   title="Reset Routine Campaign"
                 >
-                  <RefreshCw className="w-4 h-4 text-accent" />
+                  <RefreshCw className="w-3.5 h-3.5 md:w-4 md:h-4 text-accent" />
                 </Button>
               )}
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => onComplete(campaign.id)}
-                className="h-8 w-8 p-0 hover:bg-accent/20"
+                className="h-7 w-7 md:h-8 md:w-8 p-0 hover:bg-accent/20"
                 title="Mark as Completed"
               >
-                <CheckCircle className="w-4 h-4 text-accent" />
+                <CheckCircle className="w-3.5 h-3.5 md:w-4 md:h-4 text-accent" />
               </Button>
             </>
           )}
@@ -191,16 +191,16 @@ export function CampaignCard({
             variant="ghost"
             size="sm"
             onClick={() => onDelete(campaign.id)}
-            className="h-8 w-8 p-0 hover:bg-destructive/20"
+            className="h-7 w-7 md:h-8 md:w-8 p-0 hover:bg-destructive/20"
             title="Delete Campaign"
           >
-            <Trash2 className="w-4 h-4 text-destructive" />
+            <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-destructive" />
           </Button>
         </div>
       </div>
 
       {/* Progress Bar - shows overtime with different styling */}
-      <div className="mb-3">
+      <div className="mb-2 md:mb-3">
         <div className="relative h-2 bg-muted rounded-full overflow-hidden">
           <div 
             className={`absolute left-0 top-0 h-full rounded-full transition-all ${
