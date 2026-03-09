@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { z } from "zod";
 import { toast } from "sonner";
+import { useTheme } from "@/contexts/ThemeContext";
 import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
 
 const emailSchema = z.string().email("Please enter a valid email address");
@@ -11,6 +12,8 @@ const passwordSchema = z.string().min(6, "Password must be at least 6 characters
 const Auth = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { theme, themeConfig } = useTheme();
+  const labels = themeConfig.labels;
   const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -72,7 +75,7 @@ const Auth = () => {
           password,
         });
         if (error) throw error;
-        toast.success("Welcome back to the Realm!");
+        toast.success("Welcome back!");
       } else {
         const redirectUrl = `${window.location.origin}/`;
         const { error } = await supabase.auth.signUp({
@@ -99,12 +102,16 @@ const Auth = () => {
     }
   };
 
+  const bgStyle = theme === "gothic"
+    ? { backgroundImage: `url(${gothicHeroBg})` }
+    : { background: themeConfig.backgroundCss };
+
   return (
     <div className="relative min-h-screen overflow-hidden flex items-center justify-center">
       {/* Background Image */}
       <div 
         className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-110 blur-sm"
-        style={{ backgroundImage: `url(${gothicHeroBg})` }}
+        style={bgStyle}
       />
       
       {/* Dark Overlay */}
@@ -120,7 +127,7 @@ const Auth = () => {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
-          Return to Gates
+          {labels.authBackLink}
         </Link>
 
         {/* Auth Card */}
@@ -128,10 +135,10 @@ const Auth = () => {
           {/* Logo */}
           <div className="text-center mb-8">
             <h1 className="font-cinzel text-3xl font-bold tracking-widest text-foreground mb-2">
-              REALM
+              {labels.appName}
             </h1>
             <p className="font-crimson text-muted-foreground italic">
-              {isLogin ? "Welcome back, traveler" : "Join the eternal night"}
+              {isLogin ? labels.authWelcomeBack : labels.authJoin}
             </p>
           </div>
 
@@ -207,7 +214,7 @@ const Auth = () => {
                   {isLogin ? "Entering..." : "Creating..."}
                 </span>
               ) : (
-                isLogin ? "Enter the Realm" : "Create Your Legacy"
+                isLogin ? labels.authEnter : labels.authCreate
               )}
             </button>
           </form>
@@ -216,7 +223,7 @@ const Auth = () => {
           <p className="text-center text-muted-foreground text-sm font-crimson mt-6">
             {isLogin ? (
               <>
-                New to the Realm?{" "}
+                New here?{" "}
                 <button 
                   onClick={() => setIsLogin(false)}
                   className="text-primary hover:underline"
