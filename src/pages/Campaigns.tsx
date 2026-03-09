@@ -17,6 +17,8 @@ import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
 
 const Campaigns = () => {
   const { user, loading: authLoading } = useAuth();
+  const { theme, themeConfig } = useTheme();
+  const labels = themeConfig.labels;
   const {
     campaigns,
     availableTasks,
