@@ -12,6 +12,7 @@ import { DroppableCampaignSection } from "@/components/campaigns/DroppableCampai
 import { EditCampaignDialog } from "@/components/campaigns/EditCampaignDialog";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { useAuth } from "@/hooks/useAuth";
+import { useTheme } from "@/contexts/ThemeContext";
 import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
 
 const Campaigns = () => {
