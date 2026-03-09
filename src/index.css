@@ -47,22 +47,22 @@
     --gothic-moon: 45 20% 85%;
     --gothic-shadow: 240 15% 4%;
 
-    /* Gradients */
+    /* Gradients - use CSS variables so themes can override */
     --gradient-fog: linear-gradient(180deg, 
-      hsl(240 10% 6% / 0) 0%, 
-      hsl(240 10% 6% / 0.6) 50%, 
-      hsl(240 10% 6%) 100%);
+      hsl(var(--background) / 0) 0%, 
+      hsl(var(--background) / 0.6) 50%, 
+      hsl(var(--background)) 100%);
     --gradient-blood: linear-gradient(135deg, 
-      hsl(0 65% 45%) 0%, 
-      hsl(0 72% 25%) 100%);
+      hsl(var(--primary)) 0%, 
+      hsl(var(--primary) / 0.6) 100%);
     --gradient-stone: linear-gradient(180deg,
-      hsl(30 8% 12%) 0%,
-      hsl(240 10% 8%) 100%);
+      hsl(var(--card)) 0%,
+      hsl(var(--background)) 100%);
 
-    /* Shadows */
+    /* Shadows - use CSS variables so themes can override */
     --shadow-gothic: 0 10px 40px -10px hsl(0 0% 0% / 0.8);
-    --shadow-crimson: 0 0 30px hsl(0 65% 45% / 0.3);
-    --shadow-glow: 0 0 60px hsl(45 20% 85% / 0.1);
+    --shadow-crimson: 0 0 30px hsl(var(--primary) / 0.3);
+    --shadow-glow: 0 0 60px hsl(var(--gothic-moon) / 0.1);
 
     --sidebar-background: 240 8% 8%;
     --sidebar-foreground: 40 15% 85%;
