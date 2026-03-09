@@ -40,6 +40,24 @@ export interface ThemeLabels {
   authEnter: string;
   authCreate: string;
   authBackLink: string;
+  // Landing page sections
+  landingPurposeTitle: string;
+  landingPurposeDesc: string;
+  landingPurposeMobile: string;
+  landingFeature1Title: string;
+  landingFeature1Desc: string;
+  landingFeature2Title: string;
+  landingFeature2Desc: string;
+  landingFeature3Title: string;
+  landingFeature3Desc: string;
+  landingFeature4Title: string;
+  landingFeature4Desc: string;
+  landingADHDTitle: string;
+  landingADHDDesc: string;
+  landingThemesTitle: string;
+  landingThemesDesc: string;
+  landingVideoTitle: string;
+  landingVideoDesc: string;
 }
 
 export interface ThemeConfig {
@@ -104,6 +122,23 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       authEnter: "Enter the Realm",
       authCreate: "Create Your Legacy",
       authBackLink: "Return to Gates",
+      landingPurposeTitle: "The Eternal Chronicle",
+      landingPurposeDesc: "Realm is your dark sanctuary for productivity — a place where tasks become quests, projects become territories, and every completed goal is a conquest etched in shadow. Track your progress through an atmospheric interface that makes getting things done feel legendary.",
+      landingPurposeMobile: "Carry the Realm in your pocket. Install this app directly from the home page — no app store needed. Your dark chronicle, always at hand.",
+      landingFeature1Title: "The Forge & Territories",
+      landingFeature1Desc: "Organize tasks and projects with gothic flair. Group, prioritize, and conquer your to-do list.",
+      landingFeature2Title: "Epic Campaigns",
+      landingFeature2Desc: "Combine tasks into multi-session campaigns. Track time, difficulty, and progress like a true quest.",
+      landingFeature3Title: "The Diary",
+      landingFeature3Desc: "A personal tome for reflections, notes, and field reports. Your thoughts, bound in digital parchment.",
+      landingFeature4Title: "AI-Powered Insights",
+      landingFeature4Desc: "Invoke the Cleave to discover patterns in your data and generate intelligent suggestions.",
+      landingADHDTitle: "Forged for Restless Souls",
+      landingADHDDesc: "Built by someone who understands the chaos. Realm is an app for ADHD-minded people and anyone who wants to have fun with their productivity flow. No sterile spreadsheets — just dark atmosphere, satisfying progress, and a system that works with your brain, not against it.",
+      landingThemesTitle: "Shift Between Worlds",
+      landingThemesDesc: "Four distinct visual identities await. Tap the palette icon in the top bar to transform your entire experience — from the gothic darkness of Crimson Realm to the neon pulse of the Grid.",
+      landingVideoTitle: "A Vision Unfolds",
+      landingVideoDesc: "A full tutorial and walkthrough is being forged in the shadows. New features and dark revelations are coming soon.",
     },
     fonts: {
       heading: "'Cinzel', serif",
@@ -160,6 +195,23 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       authEnter: "Access Terminal",
       authCreate: "Initialize Profile",
       authBackLink: "Back to Grid",
+      landingPurposeTitle: "The Tactical Edge",
+      landingPurposeDesc: "Realm is your neon-lit command center for productivity — where targets become tasks, operations become projects, and every completed mission is a confirmed kill. Track your progress through a cyberpunk interface that makes execution feel electric.",
+      landingPurposeMobile: "Take the Grid mobile. Install this app straight from the home page — no app store required. Your command center, always in your pocket.",
+      landingFeature1Title: "Hit List & Operations",
+      landingFeature1Desc: "Lock on targets and track active ops. Organize, prioritize, and execute with lethal precision.",
+      landingFeature2Title: "Coordinated Raids",
+      landingFeature2Desc: "Assemble targets into multi-session raids. Track time, intensity, and squad status in real-time.",
+      landingFeature3Title: "Field Logs",
+      landingFeature3Desc: "Personal transmissions and after-action reports. Document your missions in encrypted digital logs.",
+      landingFeature4Title: "AI Combat Analysis",
+      landingFeature4Desc: "Deploy AI to scan your data for patterns, generate tactical insights, and optimize your operations.",
+      landingADHDTitle: "Engineered for Chaotic Energy",
+      landingADHDDesc: "Built by someone who gets it. Realm is an app for ADHD-minded people and anyone who wants to have fun with their productivity flow. No boring dashboards — just neon energy, satisfying kills, and a system that channels your chaos into raw output.",
+      landingThemesTitle: "Switch Your Frequency",
+      landingThemesDesc: "Four distinct visual modes are loaded. Hit the palette icon in the top bar to shift your entire interface — from neon demon-hunter to gothic darkness to fantasy adventure.",
+      landingVideoTitle: "Transmission Incoming",
+      landingVideoDesc: "A full tactical briefing and walkthrough is being compiled. New features and system upgrades are deploying soon.",
     },
     fonts: {
       heading: "'Orbitron', sans-serif",
@@ -252,6 +304,23 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       authEnter: "Enter the Tavern",
       authCreate: "Create Your Character",
       authBackLink: "Back to Crossroads",
+      landingPurposeTitle: "The Adventurer's Companion",
+      landingPurposeDesc: "Realm is your enchanted companion for productivity — where tasks become quests, projects become kingdoms, and every completed goal is an honor earned by firelight. Track your progress through a warm fantasy interface that makes the journey feel like an adventure.",
+      landingPurposeMobile: "Take the adventure with you. Install this app from the home page — no app store needed. Your journal and quest log, always by your side.",
+      landingFeature1Title: "Quests & Lands",
+      landingFeature1Desc: "Organize quests and manage your kingdoms. Group, prioritize, and conquer with the heart of a hero.",
+      landingFeature2Title: "Grand Adventures",
+      landingFeature2Desc: "Gather quests into epic multi-session adventures. Track time, difficulty, and your party's progress.",
+      landingFeature3Title: "Traveler's Journal",
+      landingFeature3Desc: "A leather-bound journal for tales, discoveries, and reflections from across the lands.",
+      landingFeature4Title: "Enchanted Insights",
+      landingFeature4Desc: "Call upon ancient magic to reveal patterns in your knowledge and conjure wise suggestions.",
+      landingADHDTitle: "Crafted for Wandering Minds",
+      landingADHDDesc: "Built by someone who knows the struggle. Realm is an app for ADHD-minded people and anyone who wants to have fun with their productivity flow. No lifeless tables — just warm adventure, satisfying progress, and a system that embraces the wandering spirit.",
+      landingThemesTitle: "Choose Your World",
+      landingThemesDesc: "Four enchanted realms await your discovery. Tap the palette icon in the top bar to transform your experience — from the warm forests of Eldergrove to the neon streets of the Grid.",
+      landingVideoTitle: "A Tale Being Written",
+      landingVideoDesc: "A full guide and walkthrough is being penned by the scribes. New features and enchantments are coming over the horizon.",
     },
     fonts: {
       heading: "'MedievalSharp', cursive",
@@ -344,6 +413,23 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       authEnter: "Sign In",
       authCreate: "Create Account",
       authBackLink: "Back to Home",
+      landingPurposeTitle: "The Strategic Edge",
+      landingPurposeDesc: "Realm is your premium command center for productivity — where deliverables become action items, ventures become portfolios, and every milestone achieved drives your ascent. Track performance through a sleek executive interface that makes excellence feel natural.",
+      landingPurposeMobile: "Take command anywhere. Install this app directly from the home page — no app store required. Your boardroom, always in your pocket.",
+      landingFeature1Title: "Action Items & Portfolios",
+      landingFeature1Desc: "Manage deliverables and strategic initiatives. Prioritize, delegate, and execute with precision.",
+      landingFeature2Title: "Focused Sprints",
+      landingFeature2Desc: "Assemble action items into coordinated sprints. Track time, output, and pipeline status at a glance.",
+      landingFeature3Title: "Executive Memos",
+      landingFeature3Desc: "Private notes and strategic summaries. Document decisions and insights with executive clarity.",
+      landingFeature4Title: "AI-Powered Analytics",
+      landingFeature4Desc: "Leverage AI to surface performance patterns, generate strategic insights, and optimize workflows.",
+      landingADHDTitle: "Designed for High-Performers",
+      landingADHDDesc: "Built by someone who thinks differently. Realm is an app for ADHD-minded people and anyone who wants to have fun with their productivity flow. No generic project boards — just refined aesthetics, clear metrics, and a system designed to channel restless ambition.",
+      landingThemesTitle: "Curate Your Environment",
+      landingThemesDesc: "Four premium visual identities are available. Click the palette icon in the top bar to transform your workspace — from executive luxury to gothic atmosphere to neon intensity.",
+      landingVideoTitle: "Preview Coming Soon",
+      landingVideoDesc: "A comprehensive walkthrough and product demo is in production. New features and enhancements are on the roadmap.",
     },
     fonts: {
       heading: "'Playfair Display', serif",
