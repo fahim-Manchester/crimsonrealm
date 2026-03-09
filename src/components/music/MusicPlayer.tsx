@@ -39,10 +39,12 @@ const MusicPlayer = () => {
     clearExternalPlaylist,
     playExternal,
     pauseExternal,
+    setPlayAllMode,
   } = useMusic();
 
   const handleLoadThemeTracks = () => {
     setQueue(themeTracks);
+    setPlayAllMode(true);
     if (themeTracks.length > 0) {
       playTrack(themeTracks[0], 0);
     }
@@ -52,6 +54,12 @@ const MusicPlayer = () => {
     if (externalUrl.trim()) {
       setExternalPlaylist(externalUrl.trim());
     }
+  };
+
+  const handleClickTrack = (track: typeof themeTracks[0], index: number) => {
+    setQueue(themeTracks);
+    setPlayAllMode(false);
+    playTrack(track, index);
   };
 
   return (
@@ -162,10 +170,7 @@ const MusicPlayer = () => {
                 {themeTracks.map((track, index) => (
                   <button
                     key={track.id}
-                    onClick={() => {
-                      setQueue(themeTracks);
-                      playTrack(track, index);
-                    }}
+                    onClick={() => handleClickTrack(track, index)}
                     className={cn(
                       "w-full flex items-center gap-3 p-2 rounded-md text-left transition-colors",
                       "hover:bg-primary/10",
