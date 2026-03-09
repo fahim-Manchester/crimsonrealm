@@ -274,10 +274,10 @@ const MusicPlayer = () => {
                 </label>
 
                 <label className="flex items-center justify-between">
-                  <span className="text-sm">Loop playlist</span>
+                  <span className="text-sm">Loop track</span>
                   <Switch
-                    checked={settings.loopPlaylist}
-                    onCheckedChange={(checked) => updateSettings({ loopPlaylist: checked })}
+                    checked={settings.loopTrack}
+                    onCheckedChange={(checked) => updateSettings({ loopTrack: checked })}
                   />
                 </label>
               </div>
