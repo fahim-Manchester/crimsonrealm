@@ -1,78 +1,121 @@
 
-# Fix: Mobile PWA Layout -- Cramped UI and Overflow Issues
 
-## Problem
+# Multi-Theme System for Crimson Realm
 
-When running as a PWA on mobile (standalone mode), several screens have layout issues:
+## Scope Assessment
 
-1. **Campaign Session page (screenshot 4)**: The 4 clocks in a row (`grid-cols-4`) are too cramped on small screens -- labels like "CAMPAIGN TOTAL" and "CURRENT TASK" overflow their boxes, and time values like "01:17:34" get cut off.
+This is a large feature touching nearly every file in the app. I recommend implementing it in **3 phases** across multiple messages to keep changes manageable and testable. This plan covers **Phase 1: Foundation + Theme Switcher UI**, which is the critical infrastructure. Phases 2-3 (full text mapping + per-page polish) follow after.
 
-2. **Campaign Cards (screenshots 2-3)**: The action buttons (edit, pause, play, complete, delete, refresh) all sit in one row next to the campaign title, causing the title to wrap excessively and buttons to feel cramped.
+## The 4 Themes
 
-3. **Quest Items (screenshot 4)**: Items like "Dishes POP..." and "Coo..." are truncated too aggressively because the row has too many inline elements (grip + icon + bookmark + name + badge + time + edit button + status).
+| Theme ID | Label | Personality | Color Palette | Font Pairing | Background Vibe |
+|----------|-------|-------------|---------------|-------------|-----------------|
+| `gothic` | **Crimson Realm** (default) | Dark, atmospheric, mysterious | Deep blacks, crimson, stone gray | Cinzel + Crimson Text | Dark castle/fog |
+| `neon` | **Neon Slayers** | Edgy, vibrant, demon-hunter energy | Deep purple/black, hot pink, electric cyan | Orbitron + Rajdhani | Neon cityscape / dark urban |
+| `fantasy` | **Eldergrove** | Classic fantasy, warm adventure | Forest green, gold, warm brown, parchment | MedievalSharp + Lora | Enchanted forest / tavern map |
+| `executive` | **The Pinnacle** | Sleek, powerful, luxurious | Navy, gold, marble white, charcoal | Playfair Display + Inter | Skyline / marble texture |
 
-4. **Home page header (screenshot 1)**: "REALM", settings icon, install checkmark, and "Leave Realm" button are tight but functional -- minor improvement possible.
+## Text Label Mapping (examples)
 
-## Solution
+| Concept | Gothic | Neon | Fantasy | Executive |
+|---------|--------|------|---------|-----------|
+| App name | REALM | REALM | REALM | REALM |
+| Home | Crimson Keep | Neon Hub | The Tavern | The Boardroom |
+| Resources | Chronicles | Intel Files | Scrolls | Briefs |
+| Tasks | The Forge | Hit List | Quests | Action Items |
+| Projects | Territories | Operations | Lands | Portfolios |
+| Campaigns | Campaigns | Raids | Adventures | Sprints |
+| Achievements | Achievements | Trophies | Honors | Milestones |
+| Diary | Diary | Logs | Journal | Memos |
+| Codex | The Codex | Field Manual | Lore Book | Handbook |
+| Logout | Leave Realm | Log Off | Depart | Sign Out |
+| Welcome subtitle | The Keep stands ready | Systems online. Ready to deploy. | The hearth is warm. Choose your path. | Your empire awaits. |
 
-### 1. SessionClock -- Responsive sizing for small screens
+## Architecture
 
-**File: `src/components/campaigns/SessionClock.tsx`**
+```text
+src/
+├── contexts/
+│   └── ThemeContext.tsx        ← React context + provider, reads/writes localStorage
+├── lib/
+│   └── themes.ts              ← Theme definitions: colors, labels, fonts, bg keys
+├── components/theme/
+│   └── ThemeSwitcher.tsx       ← Dialog with 4 theme preview cards
+├── assets/
+│   ├── gothic-hero-bg.jpg      (existing)
+│   ├── neon-hero-bg.jpg        (generated gradient/pattern via CSS)
+│   ├── fantasy-hero-bg.jpg     (generated gradient/pattern via CSS)
+│   └── executive-hero-bg.jpg   (generated gradient/pattern via CSS)
+```
 
-- Reduce padding on mobile: `p-2 md:p-6` instead of `p-4 md:p-6`
-- Reduce time font size on mobile: `text-lg md:text-4xl` instead of `text-2xl md:text-4xl`
-- Reduce label font size: `text-[10px] md:text-sm`
+For backgrounds: since we can't add real image assets in code, each non-gothic theme will use **rich CSS gradients** that evoke the right mood (neon city glow, forest canopy, marble/steel). The gothic theme keeps its existing `gothic-hero-bg.jpg`.
 
-### 2. Campaign Session Clocks Grid -- 2x2 on mobile, 4 columns on desktop
+## Phase 1 Plan (this message)
 
-**File: `src/pages/CampaignSession.tsx`**
+### Files to Create
 
-- Change `grid-cols-4` to `grid-cols-2 md:grid-cols-4` so the 4 clocks arrange as a 2x2 grid on mobile
-- Reduce section padding on mobile
-
-### 3. Campaign Session Header -- Wrap buttons on mobile
-
-**File: `src/pages/CampaignSession.tsx`**
-
-- Allow the header buttons ("New Session", "End Session") to wrap or stack on small screens using `flex-wrap`
-- Use shorter button text on mobile (icon-only or abbreviated)
-
-### 4. Campaign Card Action Buttons -- Wrap on mobile
-
-**File: `src/components/campaigns/CampaignCard.tsx`**
-
-- Change the action buttons container from a single row to `flex-wrap` so buttons wrap to a second line on small screens instead of cramming next to the title
-
-### 5. SortableTaskItem -- Better mobile layout
-
-**File: `src/components/campaigns/SortableTaskItem.tsx`**
-
-- Reduce gap and padding on mobile: `gap-2 p-2 md:gap-3 md:p-3`
-- Allow the task name to use `min-w-0` to ensure proper truncation
-- Hide the "POP-UP" / "HIDDEN" badge text on very small screens (keep just the icon)
-- Make the time display more compact on mobile
-
-### 6. Campaigns Page -- Reduce padding on mobile
-
-**File: `src/pages/Campaigns.tsx`**
-
-- Reduce horizontal padding: `px-4 md:px-12` instead of `px-6 md:px-12`
-- Reduce hero section margins on mobile
-
----
-
-## Technical Changes Summary
-
-| File | Changes |
+| File | Purpose |
 |------|---------|
-| `src/components/campaigns/SessionClock.tsx` | Smaller padding, font sizes on mobile |
-| `src/pages/CampaignSession.tsx` | 2x2 clock grid on mobile, wrap header buttons, reduce padding |
-| `src/components/campaigns/CampaignCard.tsx` | `flex-wrap` on action buttons |
-| `src/components/campaigns/SortableTaskItem.tsx` | Tighter mobile spacing, hide badge text on small screens |
-| `src/pages/Campaigns.tsx` | Reduce mobile padding |
+| `src/lib/themes.ts` | All theme definitions: CSS variables, label maps, font imports, background CSS |
+| `src/contexts/ThemeContext.tsx` | React context providing current theme + setter, persists to localStorage |
+| `src/components/theme/ThemeSwitcher.tsx` | Dialog with 4 theme preview cards, current highlighted |
 
----
+### Files to Modify
 
-## Key Principle
+| File | Change |
+|------|---------|
+| `src/index.css` | Add Google Font imports for all 4 themes; keep existing gothic as default |
+| `src/main.tsx` | Wrap app in `ThemeProvider` |
+| `src/pages/Index.tsx` | Add theme switcher button in header; use theme context for labels + background |
+| `src/pages/Home.tsx` | Add theme switcher button in header; use theme context for labels + background |
+| `src/pages/Auth.tsx` | Use theme context for background + flavor text |
+| `src/components/layout/PageLayout.tsx` | Use theme context for background, nav labels, logout text |
 
-All changes use responsive Tailwind classes (e.g., `text-lg md:text-4xl`, `grid-cols-2 md:grid-cols-4`) so desktop remains unchanged while mobile gets a properly spaced layout.
+### How It Works
+
+1. **`ThemeProvider`** wraps the entire app. On mount, reads `realm-theme` from localStorage (default: `gothic`). Exposes `{ theme, themeConfig, setTheme }`.
+
+2. **`themes.ts`** exports a `THEMES` object keyed by theme ID. Each entry contains:
+   - `cssVariables`: object of CSS custom property overrides (colors)
+   - `labels`: the full text mapping (home name, section names, flavor text)
+   - `fonts`: heading + body font family strings
+   - `backgroundStyle`: CSS for the page background (image URL or gradient)
+   - `displayName`, `description`, `previewColors` (for the switcher cards)
+
+3. **`ThemeProvider`** applies the active theme's CSS variables to `document.documentElement.style` on theme change. This means all existing Tailwind classes (`bg-primary`, `text-foreground`, etc.) automatically pick up the new colors.
+
+4. **`ThemeSwitcher`** renders a dialog triggered by a palette icon button. Shows 4 cards with color preview swatches, theme name, and short description. Active theme has a highlighted border.
+
+5. **Pages** use `useTheme()` hook to get `themeConfig.labels` for text and `themeConfig.backgroundStyle` for backgrounds. The gothic background image import stays as a fallback.
+
+### Color Palettes (CSS Variable Overrides)
+
+**Neon Slayers:**
+- `--background`: deep purple-black (270 15% 6%)
+- `--primary`: hot pink (330 90% 55%)
+- `--accent`: electric cyan (185 90% 50%)
+- `--card`: dark purple (270 12% 10%)
+- `--muted-foreground`: cool lavender
+- Background: radial gradient with neon pink/cyan glow spots on dark
+
+**Eldergrove:**
+- `--background`: deep forest (150 20% 8%)
+- `--primary`: warm gold (42 80% 55%)
+- `--accent`: emerald (150 60% 40%)
+- `--card`: dark wood brown (30 15% 12%)
+- `--muted-foreground`: warm sage
+- Background: gradient with deep greens and warm amber light
+
+**The Pinnacle:**
+- `--background`: near-black navy (220 20% 8%)
+- `--primary`: rich gold (45 85% 55%)
+- `--accent`: steel blue (210 30% 50%)
+- `--card`: charcoal (220 15% 12%)
+- `--muted-foreground`: silver gray
+- Background: subtle gradient with navy-to-charcoal, hint of gold
+
+## Phases 2-3 (future messages)
+
+- **Phase 2**: Apply `themeConfig.labels` to all page titles, subtitles, card descriptions, toasts, PageLayout props, and Codex content
+- **Phase 3**: Polish — theme-specific button/card class variants, campaign page theming, campaign session page, AI prompt personality hints per theme
+
