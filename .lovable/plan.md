@@ -1,89 +1,78 @@
 
+# Fix: Mobile PWA Layout -- Cramped UI and Overflow Issues
 
-# Music Player Feature
+## Problem
 
-## Overview
-Add a global music player with theme-specific tracks, external playlist support, and campaign timer integration. A music icon in the header opens a popup with controls and settings.
+When running as a PWA on mobile (standalone mode), several screens have layout issues:
 
-## Architecture
+1. **Campaign Session page (screenshot 4)**: The 4 clocks in a row (`grid-cols-4`) are too cramped on small screens -- labels like "CAMPAIGN TOTAL" and "CURRENT TASK" overflow their boxes, and time values like "01:17:34" get cut off.
 
-### 1. Music Context (`src/contexts/MusicContext.tsx`)
-Global state provider managing:
-- Current track, queue, loop mode
-- Playback state (playing, paused, volume)
-- Settings: `playOnlyWhenTimerRunning`, `playOnlyWhenTimerPaused`, `playOutsideCampaigns`, `clockTickingEnabled`
-- External playlist URL
-- Persist settings to localStorage
+2. **Campaign Cards (screenshots 2-3)**: The action buttons (edit, pause, play, complete, delete, refresh) all sit in one row next to the campaign title, causing the title to wrap excessively and buttons to feel cramped.
 
-### 2. Theme Tracks (`src/lib/themes.ts`)
-Add per-theme track definitions:
-```typescript
-interface ThemeTrack {
-  id: string;
-  title: string;
-  url: string; // YouTube/embed URL or local audio path
-}
+3. **Quest Items (screenshot 4)**: Items like "Dishes POP..." and "Coo..." are truncated too aggressively because the row has too many inline elements (grip + icon + bookmark + name + badge + time + edit button + status).
 
-// Add to ThemeConfig:
-tracks: ThemeTrack[];  // 5 tracks per theme
-```
+4. **Home page header (screenshot 1)**: "REALM", settings icon, install checkmark, and "Leave Realm" button are tight but functional -- minor improvement possible.
 
-Track themes:
-- **Gothic**: Dark ambient, organ, choir (e.g., "Requiem for the Realm", "Shadows Rise")
-- **Neon**: Synthwave, cyberpunk beats (e.g., "Grid Runner", "Neon Pulse")  
-- **Fantasy**: Celtic, orchestral (e.g., "The Wanderer's Path", "Eldergrove")
-- **Executive**: Lo-fi, jazz, focus music (e.g., "Boardroom Focus", "Executive Lounge")
+## Solution
 
-### 3. Music Player Component (`src/components/music/MusicPlayer.tsx`)
-Popup dialog with:
-- **Now Playing**: Current track with play/pause, skip, progress
-- **Track List**: 5 theme tracks + queue controls
-- **External Playlist**: URL input for Spotify/YouTube/SoundCloud
-- **Settings Toggles**:
-  1. Music plays only when campaign timer is running
-  2. Music plays only when campaign timer is paused
-  3. Music plays outside of campaigns
-  4. Clock ticking sounds
+### 1. SessionClock -- Responsive sizing for small screens
 
-### 4. Header Integration
-Add `<MusicButton />` to:
-- `PageLayout.tsx` (all inner pages)
-- `Home.tsx` (dashboard)
-- **Not** on `Index.tsx` (landing page)
+**File: `src/components/campaigns/SessionClock.tsx`**
 
-### 5. Campaign Timer Integration
-The MusicContext subscribes to a global campaign timer state:
-- Expose `campaignTimerRunning` from a lightweight global store or via custom event
-- Auto play/pause music based on user's toggle settings
+- Reduce padding on mobile: `p-2 md:p-6` instead of `p-4 md:p-6`
+- Reduce time font size on mobile: `text-lg md:text-4xl` instead of `text-2xl md:text-4xl`
+- Reduce label font size: `text-[10px] md:text-sm`
 
-### 6. Audio Implementation
-- Use HTML5 `<audio>` element for theme tracks (placeholder URLs initially)
-- External playlists: embed iframe (YouTube/Spotify) with visibility toggle
-- Clock ticking: short audio loop triggered on setting
+### 2. Campaign Session Clocks Grid -- 2x2 on mobile, 4 columns on desktop
 
-## File Changes
+**File: `src/pages/CampaignSession.tsx`**
 
-| File | Change |
-|------|--------|
-| `src/contexts/MusicContext.tsx` | New - global state + Audio API |
-| `src/components/music/MusicPlayer.tsx` | New - popup UI |
-| `src/components/music/MusicButton.tsx` | New - header trigger icon |
-| `src/lib/themes.ts` | Add `tracks` array to each theme |
-| `src/components/layout/PageLayout.tsx` | Add MusicButton to nav |
-| `src/pages/Home.tsx` | Add MusicButton to nav |
-| `src/main.tsx` | Wrap app with MusicProvider |
-| `src/index.css` | Optional animation styles |
+- Change `grid-cols-4` to `grid-cols-2 md:grid-cols-4` so the 4 clocks arrange as a 2x2 grid on mobile
+- Reduce section padding on mobile
 
-## UI Design
-- Music icon (Lucide `Music`) in header nav between InstallButton and ThemeSwitcher
-- Popup: max-w-md, themed card with sections separated by dividers
-- Track items: play icon, title, duration
-- External URL input with "Load" button
-- Toggle switches for each setting
+### 3. Campaign Session Header -- Wrap buttons on mobile
 
-## Technical Notes
-- Initial implementation uses placeholder audio URLs (royalty-free ambient tracks or silent files)
-- External embed detection: check URL for `spotify.com`, `youtube.com`, `soundcloud.com`
-- Clock ticking: ship a small tick.mp3 in `/public/audio/`
-- Settings persist in localStorage key `realm-music-settings`
+**File: `src/pages/CampaignSession.tsx`**
 
+- Allow the header buttons ("New Session", "End Session") to wrap or stack on small screens using `flex-wrap`
+- Use shorter button text on mobile (icon-only or abbreviated)
+
+### 4. Campaign Card Action Buttons -- Wrap on mobile
+
+**File: `src/components/campaigns/CampaignCard.tsx`**
+
+- Change the action buttons container from a single row to `flex-wrap` so buttons wrap to a second line on small screens instead of cramming next to the title
+
+### 5. SortableTaskItem -- Better mobile layout
+
+**File: `src/components/campaigns/SortableTaskItem.tsx`**
+
+- Reduce gap and padding on mobile: `gap-2 p-2 md:gap-3 md:p-3`
+- Allow the task name to use `min-w-0` to ensure proper truncation
+- Hide the "POP-UP" / "HIDDEN" badge text on very small screens (keep just the icon)
+- Make the time display more compact on mobile
+
+### 6. Campaigns Page -- Reduce padding on mobile
+
+**File: `src/pages/Campaigns.tsx`**
+
+- Reduce horizontal padding: `px-4 md:px-12` instead of `px-6 md:px-12`
+- Reduce hero section margins on mobile
+
+---
+
+## Technical Changes Summary
+
+| File | Changes |
+|------|---------|
+| `src/components/campaigns/SessionClock.tsx` | Smaller padding, font sizes on mobile |
+| `src/pages/CampaignSession.tsx` | 2x2 clock grid on mobile, wrap header buttons, reduce padding |
+| `src/components/campaigns/CampaignCard.tsx` | `flex-wrap` on action buttons |
+| `src/components/campaigns/SortableTaskItem.tsx` | Tighter mobile spacing, hide badge text on small screens |
+| `src/pages/Campaigns.tsx` | Reduce mobile padding |
+
+---
+
+## Key Principle
+
+All changes use responsive Tailwind classes (e.g., `text-lg md:text-4xl`, `grid-cols-2 md:grid-cols-4`) so desktop remains unchanged while mobile gets a properly spaced layout.

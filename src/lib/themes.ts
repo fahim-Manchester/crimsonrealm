@@ -60,6 +60,12 @@ export interface ThemeLabels {
   landingVideoDesc: string;
 }
 
+export interface ThemeTrack {
+  id: string;
+  title: string;
+  url: string; // Audio URL or placeholder
+}
+
 export interface ThemeConfig {
   id: ThemeId;
   displayName: string;
@@ -74,6 +80,7 @@ export interface ThemeConfig {
   };
   cssVariables: Record<string, string>;
   backgroundCss: string; // CSS gradient or image for page backgrounds
+  tracks: ThemeTrack[]; // 5 tracks per theme
 }
 
 export const THEMES: Record<ThemeId, ThemeConfig> = {
@@ -148,6 +155,13 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
     },
     cssVariables: {},
     backgroundCss: "",
+    tracks: [
+      { id: "gothic-1", title: "Requiem for the Realm", url: "https://cdn.pixabay.com/audio/2022/10/25/audio_376dd8b7e1.mp3" },
+      { id: "gothic-2", title: "Shadows Rise", url: "https://cdn.pixabay.com/audio/2022/03/15/audio_8cb749d484.mp3" },
+      { id: "gothic-3", title: "Cathedral of Souls", url: "https://cdn.pixabay.com/audio/2022/08/04/audio_2dde668d05.mp3" },
+      { id: "gothic-4", title: "Midnight Vigil", url: "https://cdn.pixabay.com/audio/2021/11/25/audio_91b32e02f9.mp3" },
+      { id: "gothic-5", title: "The Crimson Hour", url: "https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3" },
+    ],
   },
 
   neon: {
@@ -257,6 +271,13 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       "--sidebar-ring": "330 90% 55%",
     },
     backgroundCss: "radial-gradient(ellipse at 20% 50%, hsl(330 90% 55% / 0.15) 0%, transparent 50%), radial-gradient(ellipse at 80% 20%, hsl(185 90% 45% / 0.1) 0%, transparent 50%), radial-gradient(ellipse at 60% 80%, hsl(270 60% 30% / 0.2) 0%, transparent 50%), linear-gradient(180deg, hsl(270 15% 6%) 0%, hsl(270 20% 4%) 100%)",
+    tracks: [
+      { id: "neon-1", title: "Grid Runner", url: "https://cdn.pixabay.com/audio/2022/05/16/audio_3b6e7f1d71.mp3" },
+      { id: "neon-2", title: "Neon Pulse", url: "https://cdn.pixabay.com/audio/2022/10/30/audio_a16577a62a.mp3" },
+      { id: "neon-3", title: "Cyber Chase", url: "https://cdn.pixabay.com/audio/2021/08/08/audio_dc39bde808.mp3" },
+      { id: "neon-4", title: "Digital Dawn", url: "https://cdn.pixabay.com/audio/2022/01/18/audio_d0c6ff1bab.mp3" },
+      { id: "neon-5", title: "Demon Hunters", url: "https://cdn.pixabay.com/audio/2023/09/06/audio_0f75cf3baf.mp3" },
+    ],
   },
 
   fantasy: {
@@ -366,6 +387,13 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       "--sidebar-ring": "42 80% 50%",
     },
     backgroundCss: "radial-gradient(ellipse at 30% 70%, hsl(42 80% 50% / 0.08) 0%, transparent 50%), radial-gradient(ellipse at 70% 30%, hsl(150 55% 35% / 0.12) 0%, transparent 50%), radial-gradient(ellipse at 50% 50%, hsl(30 30% 15% / 0.3) 0%, transparent 70%), linear-gradient(180deg, hsl(150 20% 7%) 0%, hsl(30 15% 6%) 100%)",
+    tracks: [
+      { id: "fantasy-1", title: "The Wanderer's Path", url: "https://cdn.pixabay.com/audio/2022/02/22/audio_d1718ab41b.mp3" },
+      { id: "fantasy-2", title: "Eldergrove Theme", url: "https://cdn.pixabay.com/audio/2022/03/10/audio_0f8c37d72c.mp3" },
+      { id: "fantasy-3", title: "Tavern Rest", url: "https://cdn.pixabay.com/audio/2022/01/20/audio_6a551a2949.mp3" },
+      { id: "fantasy-4", title: "Quest Begins", url: "https://cdn.pixabay.com/audio/2022/05/17/audio_407815a472.mp3" },
+      { id: "fantasy-5", title: "Forest Whispers", url: "https://cdn.pixabay.com/audio/2021/09/06/audio_c2b33ebaa2.mp3" },
+    ],
   },
 
   executive: {
@@ -476,6 +504,13 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       "--sidebar-ring": "45 70% 52%",
     },
     backgroundCss: "radial-gradient(ellipse at 50% 0%, hsl(45 70% 52% / 0.06) 0%, transparent 50%), radial-gradient(ellipse at 80% 80%, hsl(210 40% 45% / 0.08) 0%, transparent 50%), linear-gradient(180deg, hsl(220 25% 7%) 0%, hsl(220 20% 5%) 100%)",
+    tracks: [
+      { id: "exec-1", title: "Boardroom Focus", url: "https://cdn.pixabay.com/audio/2022/10/14/audio_c4b5a1d94c.mp3" },
+      { id: "exec-2", title: "Executive Lounge", url: "https://cdn.pixabay.com/audio/2022/08/25/audio_4f3b0a8a67.mp3" },
+      { id: "exec-3", title: "Strategic Mind", url: "https://cdn.pixabay.com/audio/2022/05/13/audio_257112d5b6.mp3" },
+      { id: "exec-4", title: "Deep Work", url: "https://cdn.pixabay.com/audio/2021/11/01/audio_5f23e6a04d.mp3" },
+      { id: "exec-5", title: "The Pinnacle Suite", url: "https://cdn.pixabay.com/audio/2022/11/22/audio_6b73509fdc.mp3" },
+    ],
   },
 };
 
