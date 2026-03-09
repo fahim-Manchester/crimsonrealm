@@ -260,12 +260,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     const { isRunning, isInCampaign } = campaignState;
     
-    // Clock ticking sound
-    if (settings.clockTickingEnabled && isRunning && tickingRef.current) {
-      tickingRef.current.play().catch(() => {});
-    } else if (tickingRef.current) {
-      tickingRef.current.pause();
-      tickingRef.current.currentTime = 0;
+    // Clock ticking sound (separate from music)
+    if (settings.clockTickingEnabled && isRunning && tickingEngineRef.current) {
+      tickingEngineRef.current.start();
+    } else if (tickingEngineRef.current) {
+      tickingEngineRef.current.stop();
     }
 
     // Auto play/pause for INTERNAL tracks
