@@ -272,11 +272,11 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
     },
     backgroundCss: "radial-gradient(ellipse at 20% 50%, hsl(330 90% 55% / 0.15) 0%, transparent 50%), radial-gradient(ellipse at 80% 20%, hsl(185 90% 45% / 0.1) 0%, transparent 50%), radial-gradient(ellipse at 60% 80%, hsl(270 60% 30% / 0.2) 0%, transparent 50%), linear-gradient(180deg, hsl(270 15% 6%) 0%, hsl(270 20% 4%) 100%)",
     tracks: [
-      { id: "neon-1", title: "Grid Runner", url: "https://cdn.pixabay.com/audio/2022/05/16/audio_3b6e7f1d71.mp3" },
-      { id: "neon-2", title: "Neon Pulse", url: "https://cdn.pixabay.com/audio/2022/10/30/audio_a16577a62a.mp3" },
-      { id: "neon-3", title: "Cyber Chase", url: "https://cdn.pixabay.com/audio/2021/08/08/audio_dc39bde808.mp3" },
-      { id: "neon-4", title: "Digital Dawn", url: "https://cdn.pixabay.com/audio/2022/01/18/audio_d0c6ff1bab.mp3" },
-      { id: "neon-5", title: "Demon Hunters", url: "https://cdn.pixabay.com/audio/2023/09/06/audio_0f75cf3baf.mp3" },
+      { id: "neon-1", title: "Grid Runner", url: "https://incompetech.com/music/royalty-free/mp3-royaltyfree/RetroFuture%20Dirty.mp3" },
+      { id: "neon-2", title: "Neon Pulse", url: "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Kick%20Shock.mp3" },
+      { id: "neon-3", title: "Cyber Chase", url: "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Killing%20Time.mp3" },
+      { id: "neon-4", title: "Digital Dawn", url: "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Industrial%20Cinematic.mp3" },
+      { id: "neon-5", title: "Demon Hunters", url: "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Volatile%20Reaction.mp3" },
     ],
   },
 
