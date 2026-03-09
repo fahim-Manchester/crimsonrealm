@@ -56,6 +56,16 @@ const CampaignSession = () => {
     setItemParent
   } = useCampaignSession(campaign);
 
+  // Notify music context of timer state for auto play/pause
+  useEffect(() => {
+    notifyCampaignTimerState(sessionState.isRunning, true);
+  }, [sessionState.isRunning, notifyCampaignTimerState]);
+
+  // Notify music context we left the campaign on unmount
+  useEffect(() => {
+    return () => notifyCampaignTimerState(false, false);
+  }, [notifyCampaignTimerState]);
+
   // Fetch campaign
   useEffect(() => {
     const fetchCampaign = async () => {
