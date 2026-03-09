@@ -168,6 +168,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       bodyClass: "font-rajdhani",
     },
     cssVariables: {
+      "--radius": "0.375rem",
       "--background": "270 15% 6%",
       "--foreground": "200 20% 92%",
       "--card": "270 12% 10%",
@@ -193,6 +194,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       "--gothic-fog": "260 20% 70%",
       "--gothic-moon": "185 90% 80%",
       "--gothic-shadow": "270 20% 4%",
+      "--shadow-gothic": "0 10px 40px -10px hsl(270 20% 4% / 0.8), 0 0 15px hsl(330 90% 55% / 0.1)",
       "--sidebar-background": "270 12% 8%",
       "--sidebar-foreground": "200 15% 85%",
       "--sidebar-primary": "330 90% 55%",
