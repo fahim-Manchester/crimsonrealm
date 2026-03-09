@@ -11,6 +11,7 @@ import { AddItemDialog } from "@/components/campaigns/AddItemDialog";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { toast } from "sonner";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useMusic } from "@/contexts/MusicContext";
 import MusicPlayer from "@/components/music/MusicPlayer";
 import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
 import type { Campaign } from "@/hooks/useCampaigns";
@@ -28,6 +29,7 @@ const CampaignSession = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { theme, themeConfig } = useTheme();
+  const { notifyCampaignTimerState } = useMusic();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -53,6 +55,16 @@ const CampaignSession = () => {
     updateItemTimeManually,
     setItemParent
   } = useCampaignSession(campaign);
+
+  // Notify music context of timer state for auto play/pause
+  useEffect(() => {
+    notifyCampaignTimerState(sessionState.isRunning, true);
+  }, [sessionState.isRunning, notifyCampaignTimerState]);
+
+  // Notify music context we left the campaign on unmount
+  useEffect(() => {
+    return () => notifyCampaignTimerState(false, false);
+  }, [notifyCampaignTimerState]);
 
   // Fetch campaign
   useEffect(() => {
