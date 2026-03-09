@@ -36,6 +36,8 @@ const statusColors: Record<string, string> = {
 
 const Projects = () => {
   const { user, loading: authLoading } = useAuth();
+  const { themeConfig } = useTheme();
+  const labels = themeConfig.labels;
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
