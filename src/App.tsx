@@ -51,6 +51,7 @@ const App = () => (
           <Route path="/campaigns/:id" element={<RequireAuth><CampaignSession /></RequireAuth>} />
           <Route path="/diary" element={<RequireAuth><Diary /></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
+          <Route path="/codex" element={<RequireAuth><Codex /></RequireAuth>} />
           
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
