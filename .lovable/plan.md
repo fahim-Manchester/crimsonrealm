@@ -1,78 +1,60 @@
 
-# Fix: Mobile PWA Layout -- Cramped UI and Overflow Issues
+
+# Replace Placeholder Audio with Real Music Tracks
 
 ## Problem
-
-When running as a PWA on mobile (standalone mode), several screens have layout issues:
-
-1. **Campaign Session page (screenshot 4)**: The 4 clocks in a row (`grid-cols-4`) are too cramped on small screens -- labels like "CAMPAIGN TOTAL" and "CURRENT TASK" overflow their boxes, and time values like "01:17:34" get cut off.
-
-2. **Campaign Cards (screenshots 2-3)**: The action buttons (edit, pause, play, complete, delete, refresh) all sit in one row next to the campaign title, causing the title to wrap excessively and buttons to feel cramped.
-
-3. **Quest Items (screenshot 4)**: Items like "Dishes POP..." and "Coo..." are truncated too aggressively because the row has too many inline elements (grip + icon + bookmark + name + badge + time + edit button + status).
-
-4. **Home page header (screenshot 1)**: "REALM", settings icon, install checkmark, and "Leave Realm" button are tight but functional -- minor improvement possible.
+The current track URLs in `themes.ts` are fabricated Pixabay CDN links that don't point to actual audio files. No sound plays when tracks are selected.
 
 ## Solution
+Replace all 20 track URLs with real, working MP3 files from **Kevin MacLeod's incompetech.com** library (Creative Commons BY 4.0). I've confirmed the direct download URL format works: `https://incompetech.com/music/royalty-free/mp3-royaltyfree/FILENAME.mp3`
 
-### 1. SessionClock -- Responsive sizing for small screens
+## Track Selections
 
-**File: `src/components/campaigns/SessionClock.tsx`**
+**Gothic / Crimson Realm** (dark, eerie, somber):
+| # | Title | File | Vibe |
+|---|-------|------|------|
+| 1 | Requiem for the Realm | Dark Walk | Dark, uneasy atmosphere |
+| 2 | Shadows Rise | Ossuary 1 - A Beginning | Somber horror opening |
+| 3 | Cathedral of Souls | Night of Chaos | Chaotic dark ambient |
+| 4 | Midnight Vigil | Penumbra | Mysterious, shadowy |
+| 5 | The Crimson Hour | The Dread | Pure dread atmosphere |
 
-- Reduce padding on mobile: `p-2 md:p-6` instead of `p-4 md:p-6`
-- Reduce time font size on mobile: `text-lg md:text-4xl` instead of `text-2xl md:text-4xl`
-- Reduce label font size: `text-[10px] md:text-sm`
+**Neon / Neon Slayers** (electronic, driving, cyberpunk):
+| # | Title | File | Vibe |
+|---|-------|------|------|
+| 1 | Grid Runner | RetroFuture Dirty | Retro electronic, driving |
+| 2 | Neon Pulse | Kick Shock | Electronic pulse |
+| 3 | Cyber Chase | Killing Time | Tense electronic |
+| 4 | Digital Dawn | Industrial Cinematic | Industrial, intense |
+| 5 | Demon Hunters | Volatile Reaction | Aggressive electronic |
 
-### 2. Campaign Session Clocks Grid -- 2x2 on mobile, 4 columns on desktop
+**Fantasy / Eldergrove** (celtic, orchestral, adventure):
+| # | Title | File | Vibe |
+|---|-------|------|------|
+| 1 | The Wanderer's Path | Achaidh Cheide | Celtic, mystical |
+| 2 | Eldergrove Theme | Arcane | Mystical world music |
+| 3 | Tavern Rest | Angevin | Medieval feel |
+| 4 | Quest Begins | Artifact | World/adventure |
+| 5 | Forest Whispers | Arid Foothills | Atmospheric world |
 
-**File: `src/pages/CampaignSession.tsx`**
+**Executive / The Pinnacle** (jazz, lofi, focus):
+| # | Title | File | Vibe |
+|---|-------|------|------|
+| 1 | Boardroom Focus | Airport Lounge | Smooth jazz, relaxed |
+| 2 | Executive Lounge | Backed Vibes Clean | Clean jazz vibes |
+| 3 | Strategic Mind | Backbay Lounge | Lounge jazz |
+| 4 | Deep Work | Apero Hour | Calm jazz |
+| 5 | The Pinnacle Suite | Jazz Brunch | Bright, professional |
 
-- Change `grid-cols-4` to `grid-cols-2 md:grid-cols-4` so the 4 clocks arrange as a 2x2 grid on mobile
-- Reduce section padding on mobile
+## File Changes
 
-### 3. Campaign Session Header -- Wrap buttons on mobile
+| File | Change |
+|------|--------|
+| `src/lib/themes.ts` | Replace all 20 fake Pixabay URLs with real incompetech.com direct MP3 links |
 
-**File: `src/pages/CampaignSession.tsx`**
+## Notes
+- All tracks are CC-BY 4.0 by Kevin MacLeod (incompetech.com) -- free for commercial use with attribution
+- The existing track titles stay the same -- only the `url` field changes
+- No code logic changes needed; the `MusicContext` and `MusicPlayer` already handle playback correctly
+- The browser autoplay policy note from the stack overflow hint is relevant: first play must be user-initiated, which is already the case (user clicks play)
 
-- Allow the header buttons ("New Session", "End Session") to wrap or stack on small screens using `flex-wrap`
-- Use shorter button text on mobile (icon-only or abbreviated)
-
-### 4. Campaign Card Action Buttons -- Wrap on mobile
-
-**File: `src/components/campaigns/CampaignCard.tsx`**
-
-- Change the action buttons container from a single row to `flex-wrap` so buttons wrap to a second line on small screens instead of cramming next to the title
-
-### 5. SortableTaskItem -- Better mobile layout
-
-**File: `src/components/campaigns/SortableTaskItem.tsx`**
-
-- Reduce gap and padding on mobile: `gap-2 p-2 md:gap-3 md:p-3`
-- Allow the task name to use `min-w-0` to ensure proper truncation
-- Hide the "POP-UP" / "HIDDEN" badge text on very small screens (keep just the icon)
-- Make the time display more compact on mobile
-
-### 6. Campaigns Page -- Reduce padding on mobile
-
-**File: `src/pages/Campaigns.tsx`**
-
-- Reduce horizontal padding: `px-4 md:px-12` instead of `px-6 md:px-12`
-- Reduce hero section margins on mobile
-
----
-
-## Technical Changes Summary
-
-| File | Changes |
-|------|---------|
-| `src/components/campaigns/SessionClock.tsx` | Smaller padding, font sizes on mobile |
-| `src/pages/CampaignSession.tsx` | 2x2 clock grid on mobile, wrap header buttons, reduce padding |
-| `src/components/campaigns/CampaignCard.tsx` | `flex-wrap` on action buttons |
-| `src/components/campaigns/SortableTaskItem.tsx` | Tighter mobile spacing, hide badge text on small screens |
-| `src/pages/Campaigns.tsx` | Reduce mobile padding |
-
----
-
-## Key Principle
-
-All changes use responsive Tailwind classes (e.g., `text-lg md:text-4xl`, `grid-cols-2 md:grid-cols-4`) so desktop remains unchanged while mobile gets a properly spaced layout.
