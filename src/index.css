@@ -112,11 +112,11 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Crimson Text', serif;
+    font-family: var(--font-body, 'Crimson Text', serif);
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Cinzel', serif;
+    font-family: var(--font-heading, 'Cinzel', serif);
     font-weight: 600;
     letter-spacing: 0.05em;
   }
