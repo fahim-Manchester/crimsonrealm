@@ -343,7 +343,7 @@ const Index = () => {
                 {labels.landingCta} <ArrowRight size={16} />
               </Link>
               <Link to="/auth?mode=login" className="gothic-button-secondary">
-                {labels.landingCtaSecondary}
+                {labels.authEnter}
               </Link>
             </div>
           </div>

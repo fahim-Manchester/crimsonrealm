@@ -238,7 +238,7 @@ const Auth = () => {
                   onClick={() => setIsLogin(true)}
                   className="text-primary hover:underline"
                 >
-                  Sign in
+                  {labels.authEnter}
                 </button>
               </>
             )}
