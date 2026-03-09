@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { THEMES, ThemeId, ThemeConfig } from "@/lib/themes";
+import { THEMES, ThemeId, ThemeConfig, THEME_IDS } from "@/lib/themes";
 
 interface ThemeContextValue {
   theme: ThemeId;
@@ -10,6 +10,12 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 const STORAGE_KEY = "realm-theme";
+
+// Collect all unique CSS variable keys across all themes for proper cleanup
+const ALL_CSS_KEYS = new Set<string>();
+THEME_IDS.forEach((id) => {
+  Object.keys(THEMES[id].cssVariables).forEach((key) => ALL_CSS_KEYS.add(key));
+});
 
 function getStoredTheme(): ThemeId {
   try {
@@ -22,17 +28,13 @@ function getStoredTheme(): ThemeId {
 function applyTheme(config: ThemeConfig) {
   const root = document.documentElement;
 
-  // Reset to gothic defaults first (clear previous overrides)
-  if (config.id === "gothic") {
-    // Remove all overrides so CSS :root defaults apply
-    Object.keys(THEMES.neon.cssVariables).forEach((key) => {
-      root.style.removeProperty(key);
-    });
-  } else {
-    Object.entries(config.cssVariables).forEach(([key, value]) => {
-      root.style.setProperty(key, value);
-    });
-  }
+  // Always clear ALL overrides first so :root CSS defaults apply cleanly
+  ALL_CSS_KEYS.forEach((key) => root.style.removeProperty(key));
+
+  // Apply this theme's overrides (gothic has empty cssVariables, so nothing gets set)
+  Object.entries(config.cssVariables).forEach(([key, value]) => {
+    root.style.setProperty(key, value);
+  });
 
   // Apply font overrides
   root.style.setProperty("--font-heading", config.fonts.heading);
