@@ -314,15 +314,74 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => audio.removeEventListener("ended", handleEnded);
   }, [state.queue, state.currentTrackIndex, settings.loopTrack, state.playAllMode]);
 
+  // --- YouTube volume control helpers ---
+  const isYouTubeUrl = useCallback((url: string) => {
+    return url.includes("youtube.com") || url.includes("youtu.be");
+  }, []);
+
+  const setYouTubeVolume = useCallback((volume: number) => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({ event: "command", func: "setVolume", args: [volume] }),
+        "*"
+      );
+    }
+  }, []);
+
+  const youtubeFadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const cancelYouTubeFade = useCallback(() => {
+    if (youtubeFadeIntervalRef.current) {
+      clearInterval(youtubeFadeIntervalRef.current);
+      youtubeFadeIntervalRef.current = null;
+    }
+  }, []);
+
+  const fadeOutYouTube = useCallback((callback?: () => void) => {
+    cancelYouTubeFade();
+    let currentStep = 0;
+    const step = 100 / FADE_STEPS;
+
+    youtubeFadeIntervalRef.current = setInterval(() => {
+      currentStep++;
+      const newVol = Math.max(0, 100 - step * currentStep);
+      setYouTubeVolume(newVol);
+      if (currentStep >= FADE_STEPS) {
+        cancelYouTubeFade();
+        setYouTubeVolume(0);
+        callback?.();
+      }
+    }, FADE_INTERVAL);
+  }, [cancelYouTubeFade, setYouTubeVolume]);
+
+  const fadeInYouTube = useCallback(() => {
+    cancelYouTubeFade();
+    setYouTubeVolume(0);
+    let currentStep = 0;
+    const step = 100 / FADE_STEPS;
+
+    youtubeFadeIntervalRef.current = setInterval(() => {
+      currentStep++;
+      const newVol = Math.min(100, step * currentStep);
+      setYouTubeVolume(newVol);
+      if (currentStep >= FADE_STEPS) {
+        cancelYouTubeFade();
+        setYouTubeVolume(100);
+      }
+    }, FADE_INTERVAL);
+  }, [cancelYouTubeFade, setYouTubeVolume]);
+
   // --- External playlist control helpers ---
   const playExternal = useCallback(() => {
     if (!state.externalPlaylistUrl) return;
     const embedUrl = getEmbedUrl(state.externalPlaylistUrl);
     if (!embedUrl) return;
 
-    if (state.externalPlaylistUrl.includes("youtube.com") || state.externalPlaylistUrl.includes("youtu.be")) {
+    if (isYouTubeUrl(state.externalPlaylistUrl)) {
       if (iframeRef.current?.contentWindow) {
+        setYouTubeVolume(0);
         iframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+        fadeInYouTube();
       }
     } else {
       if (iframeRef.current && !iframeRef.current.src) {
@@ -330,15 +389,17 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
     setState(s => ({ ...s, externalIsPlaying: true }));
-  }, [state.externalPlaylistUrl]);
+  }, [state.externalPlaylistUrl, isYouTubeUrl, setYouTubeVolume, fadeInYouTube]);
 
   const pauseExternal = useCallback(() => {
     if (!state.externalPlaylistUrl) return;
 
-    if (state.externalPlaylistUrl.includes("youtube.com") || state.externalPlaylistUrl.includes("youtu.be")) {
-      if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
-      }
+    if (isYouTubeUrl(state.externalPlaylistUrl)) {
+      fadeOutYouTube(() => {
+        if (iframeRef.current?.contentWindow) {
+          iframeRef.current.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+        }
+      });
     } else {
       if (iframeRef.current) {
         savedExternalUrlRef.current = iframeRef.current.src;
@@ -346,7 +407,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
     setState(s => ({ ...s, externalIsPlaying: false }));
-  }, [state.externalPlaylistUrl]);
+  }, [state.externalPlaylistUrl, isYouTubeUrl, fadeOutYouTube]);
 
   // Handle campaign timer state changes
   useEffect(() => {
