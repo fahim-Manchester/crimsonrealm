@@ -168,6 +168,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       bodyClass: "font-rajdhani",
     },
     cssVariables: {
+      "--radius": "0.375rem",
       "--background": "270 15% 6%",
       "--foreground": "200 20% 92%",
       "--card": "270 12% 10%",
@@ -193,6 +194,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       "--gothic-fog": "260 20% 70%",
       "--gothic-moon": "185 90% 80%",
       "--gothic-shadow": "270 20% 4%",
+      "--shadow-gothic": "0 10px 40px -10px hsl(270 20% 4% / 0.8), 0 0 15px hsl(330 90% 55% / 0.1)",
       "--sidebar-background": "270 12% 8%",
       "--sidebar-foreground": "200 15% 85%",
       "--sidebar-primary": "330 90% 55%",
@@ -258,6 +260,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       bodyClass: "font-lora",
     },
     cssVariables: {
+      "--radius": "0.5rem",
       "--background": "150 20% 7%",
       "--foreground": "40 25% 88%",
       "--card": "30 15% 11%",
@@ -283,6 +286,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       "--gothic-fog": "80 15% 65%",
       "--gothic-moon": "42 60% 80%",
       "--gothic-shadow": "150 20% 4%",
+      "--shadow-gothic": "0 8px 30px -8px hsl(150 20% 4% / 0.6), 0 0 20px hsl(42 80% 50% / 0.08)",
       "--sidebar-background": "150 15% 8%",
       "--sidebar-foreground": "40 20% 82%",
       "--sidebar-primary": "42 80% 50%",
@@ -348,6 +352,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       bodyClass: "font-inter",
     },
     cssVariables: {
+      "--radius": "0.5rem",
       "--background": "220 25% 7%",
       "--foreground": "40 10% 92%",
       "--card": "220 18% 11%",
@@ -373,6 +378,8 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       "--gothic-fog": "220 10% 68%",
       "--gothic-moon": "45 50% 82%",
       "--gothic-shadow": "220 25% 4%",
+      "--shadow-gothic": "0 8px 30px -8px hsl(220 25% 4% / 0.6)",
+      "--shadow-crimson": "0 0 25px hsl(45 70% 52% / 0.2)",
       "--sidebar-background": "220 20% 9%",
       "--sidebar-foreground": "40 8% 82%",
       "--sidebar-primary": "45 70% 52%",

@@ -1,5 +1,5 @@
-import { Palette } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Palette, Check } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { THEME_IDS, THEMES } from "@/lib/themes";
 import { useState } from "react";
@@ -21,6 +21,9 @@ const ThemeSwitcher = () => {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="font-cinzel tracking-wider">Choose Your Realm</DialogTitle>
+          <DialogDescription className="font-crimson text-muted-foreground">
+            Switch the look and feel. Your data stays the same.
+          </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3 mt-2">
           {THEME_IDS.map((id) => {
@@ -35,7 +38,7 @@ const ThemeSwitcher = () => {
                 }}
                 className={`relative rounded-sm border-2 p-4 text-left transition-all duration-200 hover:scale-[1.02] ${
                   isActive
-                    ? "border-primary bg-primary/10 shadow-lg"
+                    ? "border-primary bg-primary/10 shadow-lg ring-1 ring-primary/30"
                     : "border-border/50 bg-card/60 hover:border-primary/40"
                 }`}
               >
@@ -44,7 +47,7 @@ const ThemeSwitcher = () => {
                   {t.previewColors.map((color, i) => (
                     <div
                       key={i}
-                      className="w-6 h-6 rounded-full border border-white/10"
+                      className="w-6 h-6 rounded-full border border-white/10 shadow-sm"
                       style={{ backgroundColor: color }}
                     />
                   ))}
@@ -59,7 +62,9 @@ const ThemeSwitcher = () => {
                 </div>
                 {/* Active indicator */}
                 {isActive && (
-                  <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary" />
+                  <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                    <Check className="w-3 h-3 text-primary-foreground" />
+                  </div>
                 )}
               </button>
             );
