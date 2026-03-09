@@ -410,7 +410,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       landingCtaSecondary: "Sign In",
       authWelcomeBack: "Welcome back",
       authJoin: "Create your account",
-      authEnter: "Sign In",
+      authEnter: "Clock In",
       authCreate: "Create Account",
       authBackLink: "Back to Home",
       landingPurposeTitle: "The Strategic Edge",
