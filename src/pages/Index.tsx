@@ -153,7 +153,7 @@ const Index = () => {
                 {labels.landingCta}
               </Link>
               <Link to="/auth?mode=login" className="gothic-button-secondary w-full sm:w-auto">
-                {labels.landingCtaSecondary}
+                {labels.authEnter}
               </Link>
             </div>
 
