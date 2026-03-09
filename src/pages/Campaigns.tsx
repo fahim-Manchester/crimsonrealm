@@ -220,7 +220,7 @@ const Campaigns = () => {
               className="gothic-button-primary flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
-              Create Campaign
+              Create {labels.campaigns}
             </Button>
           </div>
 

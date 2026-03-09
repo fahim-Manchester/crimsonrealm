@@ -168,15 +168,16 @@ const CampaignSession = () => {
   const currentItem = items[sessionState.currentTaskIndex];
   const canComplete = sessionState.isRunning && currentItem && currentItem.status !== 'completed' && currentItem.status !== 'abandoned';
 
+  const bgStyle = theme === "gothic"
+    ? { backgroundImage: `url(${gothicHeroBg})` }
+    : { background: themeConfig.backgroundCss };
+
   return (
     <div className="relative min-h-screen overflow-hidden">
       {/* Background */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: `url(${gothicHeroBg})` }}
-      />
+      <div className="absolute inset-0 bg-cover bg-center bg-no-repeat" style={bgStyle} />
       <div className="absolute inset-0 bg-background/85" />
-      <div className="absolute inset-0 bg-gradient-fog opacity-40" />
+      {theme === "gothic" && <div className="absolute inset-0 bg-gradient-fog opacity-40" />}
 
       {/* Content */}
       <div className="relative z-10 min-h-screen flex flex-col">
