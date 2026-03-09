@@ -83,7 +83,7 @@ const Achievements = () => {
   if (authLoading || loading) return <LoadingSpinner />;
 
   return (
-    <PageLayout title="Achievements" subtitle="Your trophies, medals, and gems of conquest">
+    <PageLayout title={labels.achievements} subtitle={labels.achievementsSubtitle}>
       <div className="max-w-6xl mx-auto space-y-12">
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

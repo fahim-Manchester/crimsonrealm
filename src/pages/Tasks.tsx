@@ -245,7 +245,7 @@ const Tasks = () => {
   if (authLoading || loading) return <LoadingSpinner />;
 
   return (
-    <PageLayout title="The Forge" subtitle="Tasks to be hammered into completion">
+    <PageLayout title={labels.tasks} subtitle={labels.tasksSubtitle}>
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row justify-between gap-4">
           <div className="flex flex-wrap items-center gap-2">

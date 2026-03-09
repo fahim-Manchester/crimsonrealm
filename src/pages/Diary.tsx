@@ -88,7 +88,7 @@ const Diary = () => {
   };
 
   return (
-    <PageLayout title="Diary" subtitle="Your personal collection of tomes and reflections">
+    <PageLayout title={labels.diary} subtitle={labels.diarySubtitle}>
       <BookShelf
         books={books}
         onAddBook={() => setCreateDialogOpen(true)}

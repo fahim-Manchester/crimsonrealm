@@ -196,7 +196,7 @@ const Resources = () => {
   if (authLoading || loading) return <LoadingSpinner />;
 
   return (
-    <PageLayout title="Chronicles" subtitle="Your collection of sacred resources and ancient knowledge">
+    <PageLayout title={labels.resources} subtitle={labels.resourcesSubtitle}>
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row justify-between gap-4">
           <CleaveControls

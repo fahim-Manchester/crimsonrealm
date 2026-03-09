@@ -184,7 +184,7 @@ const Projects = () => {
   if (authLoading || loading) return <LoadingSpinner />;
 
   return (
-    <PageLayout title="Territories" subtitle="The projects you've claimed in your conquest">
+    <PageLayout title={labels.projects} subtitle={labels.projectsSubtitle}>
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row justify-between gap-4">
           <CleaveControls
