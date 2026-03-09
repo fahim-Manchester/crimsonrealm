@@ -1,78 +1,59 @@
+# Audio Fade Transitions & Play All + Loop Track Behavior
 
-# Fix: Mobile PWA Layout -- Cramped UI and Overflow Issues
+## Changes  
+  
+0. Also change the ticking sound effect to something more pleasant please like normal clock ticking sounds instead of this weird beep. The sound should feel a bit like a metronome but at the rate of a clock here.  It should feel pleasant, not annoying.
 
-## Problem
+### 1. Audio fade in/out (internal tracks only)
 
-When running as a PWA on mobile (standalone mode), several screens have layout issues:
+Add fade helpers that use `audioRef.current.volume` ramping over ~500ms:
 
-1. **Campaign Session page (screenshot 4)**: The 4 clocks in a row (`grid-cols-4`) are too cramped on small screens -- labels like "CAMPAIGN TOTAL" and "CURRENT TASK" overflow their boxes, and time values like "01:17:34" get cut off.
+- `**fadeOut(callback)**`: Ramp volume from current to 0 over 500ms, then call callback (pause, switch track, etc.)
+- `**fadeIn()**`: Set volume to 0, play, ramp to `settings.volume` over 500ms
 
-2. **Campaign Cards (screenshots 2-3)**: The action buttons (edit, pause, play, complete, delete, refresh) all sit in one row next to the campaign title, causing the title to wrap excessively and buttons to feel cramped.
+Apply fades to:
 
-3. **Quest Items (screenshot 4)**: Items like "Dishes POP..." and "Coo..." are truncated too aggressively because the row has too many inline elements (grip + icon + bookmark + name + badge + time + edit button + status).
+- Timer-triggered pause/play (campaign state changes)
+- Manual pause/play toggle
+- Track switching (manual selection, next/prev, auto-advance on track end)
+- When `handleEnded` fires and advances to next track, crossfade by starting new track at vol 0 and fading in
 
-4. **Home page header (screenshot 1)**: "REALM", settings icon, install checkmark, and "Leave Realm" button are tight but functional -- minor improvement possible.
+External playlists (YouTube/Spotify) can't be volume-controlled from JS, so fades only apply to internal library tracks.
 
-## Solution
+### 2. Play All + Loop Track interaction
 
-### 1. SessionClock -- Responsive sizing for small screens
+Current behavior: `loopTrack` = replay same track forever. But when "Play All" was used (queue has all theme tracks), the user wants sequential playback with wrap-around.
 
-**File: `src/components/campaigns/SessionClock.tsx`**
+New `handleEnded` logic:
 
-- Reduce padding on mobile: `p-2 md:p-6` instead of `p-4 md:p-6`
-- Reduce time font size on mobile: `text-lg md:text-4xl` instead of `text-2xl md:text-4xl`
-- Reduce label font size: `text-[10px] md:text-sm`
+- **loopTrack ON + queue has multiple tracks (Play All)**: advance to next track; after the last track, wrap to index 0 (infinite sequential loop of the full queue)
+- **loopTrack ON + single track selected (not Play All)**: replay the same track (current behavior)
+- **loopTrack OFF**: advance to next track; stop after the last one
 
-### 2. Campaign Session Clocks Grid -- 2x2 on mobile, 4 columns on desktop
+Detection: if `queue.length > 1`, treat as "Play All" mode. If `queue.length <= 1` or the user clicked a single track without Play All, treat as single-track mode.
 
-**File: `src/pages/CampaignSession.tsx`**
+To distinguish: when user clicks a single track, we still `setQueue(themeTracks)` (line 166). So we need a new state flag `playAllMode: boolean` set to `true` by `handleLoadThemeTracks` and `false` when user clicks an individual track.
 
-- Change `grid-cols-4` to `grid-cols-2 md:grid-cols-4` so the 4 clocks arrange as a 2x2 grid on mobile
-- Reduce section padding on mobile
+### 3. File changes
 
-### 3. Campaign Session Header -- Wrap buttons on mobile
 
-**File: `src/pages/CampaignSession.tsx`**
+| File                                   | Change                                                                                                                                                              |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/contexts/MusicContext.tsx`        | Add `fadeIn`/`fadeOut` helpers; wrap all play/pause/switch calls with fades; add `playAllMode` to state; update `handleEnded` logic for Play All + Loop Track combo |
+| `src/components/music/MusicPlayer.tsx` | Set `playAllMode: false` when clicking individual track; `handleLoadThemeTracks` sets `playAllMode: true` via new context method                                    |
 
-- Allow the header buttons ("New Session", "End Session") to wrap or stack on small screens using `flex-wrap`
-- Use shorter button text on mobile (icon-only or abbreviated)
 
-### 4. Campaign Card Action Buttons -- Wrap on mobile
+### 4. Fade implementation detail
 
-**File: `src/components/campaigns/CampaignCard.tsx`**
+```text
+fadeOut (500ms):
+  current volume → 0 via setInterval(20ms steps)
+  on complete: execute callback (pause / switch src)
 
-- Change the action buttons container from a single row to `flex-wrap` so buttons wrap to a second line on small screens instead of cramming next to the title
+fadeIn (500ms):
+  set volume = 0
+  play()
+  0 → target volume via setInterval(20ms steps)
+```
 
-### 5. SortableTaskItem -- Better mobile layout
-
-**File: `src/components/campaigns/SortableTaskItem.tsx`**
-
-- Reduce gap and padding on mobile: `gap-2 p-2 md:gap-3 md:p-3`
-- Allow the task name to use `min-w-0` to ensure proper truncation
-- Hide the "POP-UP" / "HIDDEN" badge text on very small screens (keep just the icon)
-- Make the time display more compact on mobile
-
-### 6. Campaigns Page -- Reduce padding on mobile
-
-**File: `src/pages/Campaigns.tsx`**
-
-- Reduce horizontal padding: `px-4 md:px-12` instead of `px-6 md:px-12`
-- Reduce hero section margins on mobile
-
----
-
-## Technical Changes Summary
-
-| File | Changes |
-|------|---------|
-| `src/components/campaigns/SessionClock.tsx` | Smaller padding, font sizes on mobile |
-| `src/pages/CampaignSession.tsx` | 2x2 clock grid on mobile, wrap header buttons, reduce padding |
-| `src/components/campaigns/CampaignCard.tsx` | `flex-wrap` on action buttons |
-| `src/components/campaigns/SortableTaskItem.tsx` | Tighter mobile spacing, hide badge text on small screens |
-| `src/pages/Campaigns.tsx` | Reduce mobile padding |
-
----
-
-## Key Principle
-
-All changes use responsive Tailwind classes (e.g., `text-lg md:text-4xl`, `grid-cols-2 md:grid-cols-4`) so desktop remains unchanged while mobile gets a properly spaced layout.
+Using `setInterval` with 20ms steps = 25 steps over 500ms for smooth ramping. Store interval ID in a ref to cancel if interrupted.
