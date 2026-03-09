@@ -29,6 +29,7 @@ const CampaignSession = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { theme, themeConfig } = useTheme();
+  const { notifyCampaignTimerState } = useMusic();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
