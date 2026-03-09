@@ -211,7 +211,7 @@ const articles = [
           The <strong>Settings</strong> page lets you manage your account and app preferences.
         </p>
         <ul className="list-disc list-inside space-y-2 mb-3">
-          <li>Access settings from the gear icon in the Sanctum navigation bar.</li>
+          <li>Access settings from the gear icon in the Crimson Keep navigation bar.</li>
           <li>Manage your account details and sign-out options.</li>
           <li>The app uses a dark gothic theme by default, designed for focused, distraction-free work.</li>
         </ul>

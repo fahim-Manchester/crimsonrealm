@@ -48,7 +48,7 @@ const PageLayout = ({ children, title, subtitle }: PageLayoutProps) => {
           <nav className="flex items-center gap-4">
             <InstallButton />
             <Link to="/home" className="font-crimson text-muted-foreground hover:text-foreground transition-colors">
-              Sanctum
+              The Keep
             </Link>
             <button 
               onClick={handleLogout}
