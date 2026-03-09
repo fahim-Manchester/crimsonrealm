@@ -260,6 +260,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       bodyClass: "font-lora",
     },
     cssVariables: {
+      "--radius": "0.5rem",
       "--background": "150 20% 7%",
       "--foreground": "40 25% 88%",
       "--card": "30 15% 11%",
@@ -285,6 +286,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       "--gothic-fog": "80 15% 65%",
       "--gothic-moon": "42 60% 80%",
       "--gothic-shadow": "150 20% 4%",
+      "--shadow-gothic": "0 8px 30px -8px hsl(150 20% 4% / 0.6), 0 0 20px hsl(42 80% 50% / 0.08)",
       "--sidebar-background": "150 15% 8%",
       "--sidebar-foreground": "40 20% 82%",
       "--sidebar-primary": "42 80% 50%",
