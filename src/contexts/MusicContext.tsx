@@ -8,7 +8,7 @@ export interface MusicSettings {
   playOutsideCampaigns: boolean;
   clockTickingEnabled: boolean;
   volume: number;
-  loopPlaylist: boolean;
+  loopTrack: boolean;
 }
 
 interface MusicState {
