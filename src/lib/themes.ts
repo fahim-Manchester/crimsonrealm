@@ -402,7 +402,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       codexSubtitle: "Your comprehensive operational guide.",
       settings: "Settings",
       settingsSubtitle: "Configure your workspace",
-      logout: "Sign Out",
+      logout: "Clock Out",
       landingTitle: "Welcome to",
       landingTitleAccent: "The Pinnacle",
       landingSubtitle: "Where ambition meets execution. Command your empire with precision, clarity, and relentless drive.",
