@@ -8,6 +8,7 @@ import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
 import { Settings } from "lucide-react";
 import InstallButton from "@/components/pwa/InstallButton";
 import ThemeSwitcher from "@/components/theme/ThemeSwitcher";
+import MusicPlayer from "@/components/music/MusicPlayer";
 
 const Home = () => {
   const navigate = useNavigate();
