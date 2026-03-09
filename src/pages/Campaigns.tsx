@@ -206,11 +206,10 @@ const Campaigns = () => {
           {/* Hero */}
           <div className="text-center mb-6 md:mb-10">
             <h2 className="text-gothic-title text-2xl md:text-3xl mb-3">
-              Rally Your <span className="text-primary">Forces</span>
+              {labels.campaignsHeroTitle.split(" ").slice(0, -1).join(" ")} <span className="text-primary">{labels.campaignsHeroTitle.split(" ").slice(-1)}</span>
             </h2>
             <p className="font-crimson text-muted-foreground max-w-xl mx-auto">
-              Combine tasks from the Forge and territories to conquer into epic campaigns. 
-              Drag campaigns between sections to organize your quests.
+              {labels.campaignsHeroDesc}
             </p>
           </div>
 
