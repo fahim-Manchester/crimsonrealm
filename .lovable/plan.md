@@ -1,78 +1,58 @@
 
-# Fix: Mobile PWA Layout -- Cramped UI and Overflow Issues
 
-## Problem
+# Enhanced Landing Page with Scrollable Sections
 
-When running as a PWA on mobile (standalone mode), several screens have layout issues:
+## Overview
 
-1. **Campaign Session page (screenshot 4)**: The 4 clocks in a row (`grid-cols-4`) are too cramped on small screens -- labels like "CAMPAIGN TOTAL" and "CURRENT TASK" overflow their boxes, and time values like "01:17:34" get cut off.
+Transform the landing page from a single-screen hero into a scrollable multi-section page. Each section adapts its text and imagery to the active theme. The page background changes from `min-h-screen overflow-hidden` to a scrollable layout.
 
-2. **Campaign Cards (screenshots 2-3)**: The action buttons (edit, pause, play, complete, delete, refresh) all sit in one row next to the campaign title, causing the title to wrap excessively and buttons to feel cramped.
+## New Sections (below existing hero)
 
-3. **Quest Items (screenshot 4)**: Items like "Dishes POP..." and "Coo..." are truncated too aggressively because the row has too many inline elements (grip + icon + bookmark + name + badge + time + edit button + status).
+### Section 1: "What is Realm?"
+- Two-column layout: text left, themed illustration right
+- Text explains the app's purpose (productivity + fun) in theme-appropriate language
+- Mention PWA installability ("Install on your phone from the home page")
+- Right side: a themed SVG/icon composition or styled card mockup (gothic castle, neon grid, fantasy map, executive skyline — built with CSS/Tailwind, no real images needed)
 
-4. **Home page header (screenshot 1)**: "REALM", settings icon, install checkmark, and "Leave Realm" button are tight but functional -- minor improvement possible.
+### Section 2: "Key Features" 
+- 3-4 feature cards in a grid (icon + title + short description)
+- Features: Theme system, Campaigns/Quests, Diary/Journal, AI-powered tools
+- All card text pulled from theme labels
 
-## Solution
+### Section 3: "Built for ADHD Minds"
+- Centered text section with personality
+- Gothic: "Forged for restless souls..."; Neon: "Engineered for chaotic energy..."; Fantasy: "Crafted for wandering minds..."; Executive: "Designed for high-performers..."
+- Core message: productivity app for ADHD-minded people and anyone who wants fun in their workflow
 
-### 1. SessionClock -- Responsive sizing for small screens
+### Section 4: "Customize Your Experience"
+- Highlight the 4 themes with mini preview cards (reuse color swatches from ThemeSwitcher)
+- Mention the palette icon in the top bar
+- Theme-aware caption
 
-**File: `src/components/campaigns/SessionClock.tsx`**
+### Section 5: "Coming Soon" + Video Placeholder
+- Embedded video container with placeholder state
+- Overlay text: "Tutorial coming soon" / themed equivalent
+- Styled to fit the page aesthetic (dark card with play button icon)
 
-- Reduce padding on mobile: `p-2 md:p-6` instead of `p-4 md:p-6`
-- Reduce time font size on mobile: `text-lg md:text-4xl` instead of `text-2xl md:text-4xl`
-- Reduce label font size: `text-[10px] md:text-sm`
+## File Changes
 
-### 2. Campaign Session Clocks Grid -- 2x2 on mobile, 4 columns on desktop
+### `src/lib/themes.ts`
+- Add new label keys to `ThemeLabels`: `landingPurpose`, `landingPurposeDesc`, `landingADHD`, `landingADHDDesc`, `landingThemes`, `landingThemesDesc`, `landingVideoTitle`, `landingVideoDesc`, `landingFeatures` (array-like: 4 feature title+desc pairs as individual keys)
+- Populate for all 4 themes
 
-**File: `src/pages/CampaignSession.tsx`**
+### `src/pages/Index.tsx`
+- Remove `overflow-hidden` from root, change to scrollable
+- Background becomes fixed/sticky so it persists while scrolling
+- Add 5 new sections below the hero with proper spacing, animations, and dividers
+- Each section uses `themeConfig.labels` for text
+- Video section: an empty `<div>` styled as a 16:9 video container with a play icon and "Coming soon" overlay
 
-- Change `grid-cols-4` to `grid-cols-2 md:grid-cols-4` so the 4 clocks arrange as a 2x2 grid on mobile
-- Reduce section padding on mobile
+### `src/index.css` (minor)
+- Add a `scroll-smooth` utility if not present
 
-### 3. Campaign Session Header -- Wrap buttons on mobile
+## Design Notes
+- Each section uses `max-w-6xl mx-auto` for consistent width
+- Subtle fade-in animations on scroll (CSS `animate-fade-in-up` with intersection observer or just staggered delays)
+- Section dividers use the existing `bg-gradient-to-r from-transparent via-border to-transparent` pattern
+- "Themed illustrations" will be composed from Lucide icons + styled containers (e.g., a castle icon arrangement for gothic, circuit board for neon, tree/shield for fantasy, chart/building for executive)
 
-**File: `src/pages/CampaignSession.tsx`**
-
-- Allow the header buttons ("New Session", "End Session") to wrap or stack on small screens using `flex-wrap`
-- Use shorter button text on mobile (icon-only or abbreviated)
-
-### 4. Campaign Card Action Buttons -- Wrap on mobile
-
-**File: `src/components/campaigns/CampaignCard.tsx`**
-
-- Change the action buttons container from a single row to `flex-wrap` so buttons wrap to a second line on small screens instead of cramming next to the title
-
-### 5. SortableTaskItem -- Better mobile layout
-
-**File: `src/components/campaigns/SortableTaskItem.tsx`**
-
-- Reduce gap and padding on mobile: `gap-2 p-2 md:gap-3 md:p-3`
-- Allow the task name to use `min-w-0` to ensure proper truncation
-- Hide the "POP-UP" / "HIDDEN" badge text on very small screens (keep just the icon)
-- Make the time display more compact on mobile
-
-### 6. Campaigns Page -- Reduce padding on mobile
-
-**File: `src/pages/Campaigns.tsx`**
-
-- Reduce horizontal padding: `px-4 md:px-12` instead of `px-6 md:px-12`
-- Reduce hero section margins on mobile
-
----
-
-## Technical Changes Summary
-
-| File | Changes |
-|------|---------|
-| `src/components/campaigns/SessionClock.tsx` | Smaller padding, font sizes on mobile |
-| `src/pages/CampaignSession.tsx` | 2x2 clock grid on mobile, wrap header buttons, reduce padding |
-| `src/components/campaigns/CampaignCard.tsx` | `flex-wrap` on action buttons |
-| `src/components/campaigns/SortableTaskItem.tsx` | Tighter mobile spacing, hide badge text on small screens |
-| `src/pages/Campaigns.tsx` | Reduce mobile padding |
-
----
-
-## Key Principle
-
-All changes use responsive Tailwind classes (e.g., `text-lg md:text-4xl`, `grid-cols-2 md:grid-cols-4`) so desktop remains unchanged while mobile gets a properly spaced layout.
