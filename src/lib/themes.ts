@@ -352,6 +352,7 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       bodyClass: "font-inter",
     },
     cssVariables: {
+      "--radius": "0.5rem",
       "--background": "220 25% 7%",
       "--foreground": "40 10% 92%",
       "--card": "220 18% 11%",
@@ -377,6 +378,8 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       "--gothic-fog": "220 10% 68%",
       "--gothic-moon": "45 50% 82%",
       "--gothic-shadow": "220 25% 4%",
+      "--shadow-gothic": "0 8px 30px -8px hsl(220 25% 4% / 0.6)",
+      "--shadow-crimson": "0 0 25px hsl(45 70% 52% / 0.2)",
       "--sidebar-background": "220 20% 9%",
       "--sidebar-foreground": "40 8% 82%",
       "--sidebar-primary": "45 70% 52%",
