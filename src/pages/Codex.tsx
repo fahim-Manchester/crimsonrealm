@@ -30,7 +30,7 @@ const articles = [
           that turns your work into an epic quest. Here's how to begin your journey.
         </p>
         <ul className="list-disc list-inside space-y-2 mb-3">
-          <li>After signing up and verifying your email, you'll arrive at the <strong>Inner Sanctum</strong> — your home dashboard.</li>
+          <li>After signing up and verifying your email, you'll arrive at the <strong>Crimson Keep</strong> — your home dashboard.</li>
           <li>From here you can access every section of the Realm: Chronicles, Forge, Territories, Campaigns, Achievements, and Diary.</li>
           <li>Start by creating a <strong>Territory</strong> (project), then add <strong>Forge</strong> tasks and <strong>Chronicle</strong> resources linked to it.</li>
           <li>When you're ready for a focused work session, create a <strong>Campaign</strong> to combine tasks into a timed quest.</li>
@@ -211,7 +211,7 @@ const articles = [
           The <strong>Settings</strong> page lets you manage your account and app preferences.
         </p>
         <ul className="list-disc list-inside space-y-2 mb-3">
-          <li>Access settings from the gear icon in the Sanctum navigation bar.</li>
+          <li>Access settings from the gear icon in the Crimson Keep navigation bar.</li>
           <li>Manage your account details and sign-out options.</li>
           <li>The app uses a dark gothic theme by default, designed for focused, distraction-free work.</li>
         </ul>

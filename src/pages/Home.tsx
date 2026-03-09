@@ -71,10 +71,10 @@ const Home = () => {
             {/* Welcome Section */}
             <div className="text-center mb-16 opacity-0 animate-fade-in" style={{ animationDelay: "0.2s" }}>
               <h1 className="text-gothic-title text-3xl md:text-5xl mb-4">
-                Welcome to the <span className="text-primary">Inner Sanctum</span>
+                Welcome to the <span className="text-primary">Crimson Keep</span>
               </h1>
               <p className="font-crimson text-lg md:text-xl text-muted-foreground italic max-w-2xl mx-auto">
-                You have passed through the gates. The realm's secrets now lie before you.
+                The Keep stands ready. Your domains await.
               </p>
             </div>
 
