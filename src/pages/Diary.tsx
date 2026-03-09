@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTheme } from "@/contexts/ThemeContext";
 import PageLayout from "@/components/layout/PageLayout";
 import BookShelf from "@/components/diary/BookShelf";
 import CreateBookDialog from "@/components/diary/CreateBookDialog";
