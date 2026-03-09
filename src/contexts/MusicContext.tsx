@@ -47,7 +47,7 @@ interface MusicContextType {
 const STORAGE_KEY = "realm-music-settings";
 const STATE_STORAGE_KEY = "realm-music-state";
 
-const FADE_DURATION = 500;
+const FADE_DURATION = 1200;
 const FADE_INTERVAL = 20;
 const FADE_STEPS = FADE_DURATION / FADE_INTERVAL;
 
