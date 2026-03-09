@@ -34,6 +34,8 @@ interface Project {
 
 const Resources = () => {
   const { user, loading: authLoading } = useAuth();
+  const { themeConfig } = useTheme();
+  const labels = themeConfig.labels;
   const [resources, setResources] = useState<Resource[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
