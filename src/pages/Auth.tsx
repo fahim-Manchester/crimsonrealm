@@ -162,7 +162,7 @@ const Auth = () => {
                   : "text-muted-foreground border-b border-border hover:text-foreground"
               }`}
             >
-              Sign Up
+              {labels.authCreate}
             </button>
           </div>
 
