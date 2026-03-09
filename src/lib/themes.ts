@@ -155,6 +155,13 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
     },
     cssVariables: {},
     backgroundCss: "",
+    tracks: [
+      { id: "gothic-1", title: "Requiem for the Realm", url: "https://cdn.pixabay.com/audio/2022/10/25/audio_376dd8b7e1.mp3" },
+      { id: "gothic-2", title: "Shadows Rise", url: "https://cdn.pixabay.com/audio/2022/03/15/audio_8cb749d484.mp3" },
+      { id: "gothic-3", title: "Cathedral of Souls", url: "https://cdn.pixabay.com/audio/2022/08/04/audio_2dde668d05.mp3" },
+      { id: "gothic-4", title: "Midnight Vigil", url: "https://cdn.pixabay.com/audio/2021/11/25/audio_91b32e02f9.mp3" },
+      { id: "gothic-5", title: "The Crimson Hour", url: "https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3" },
+    ],
   },
 
   neon: {
