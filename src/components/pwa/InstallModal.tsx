@@ -126,7 +126,7 @@ export default function InstallModal({ open, onClose, browser, platform }: Props
         <DialogHeader>
           <DialogTitle className="font-cinzel">{instructions.title}</DialogTitle>
           <DialogDescription className="font-crimson">
-            Add Crimson Realm to your home screen for the full experience.
+            Add Crimson Realm to your phone's home screen for the full mobile experience.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
