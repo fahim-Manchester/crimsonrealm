@@ -18,6 +18,7 @@ interface MusicState {
   queue: ThemeTrack[];
   externalPlaylistUrl: string;
   useExternalPlaylist: boolean;
+  externalIsPlaying: boolean;
 }
 
 interface MusicContextType {
@@ -35,8 +36,10 @@ interface MusicContextType {
   updateSettings: (settings: Partial<MusicSettings>) => void;
   setExternalPlaylist: (url: string) => void;
   clearExternalPlaylist: () => void;
-  // Campaign timer integration
+  playExternal: () => void;
+  pauseExternal: () => void;
   notifyCampaignTimerState: (isRunning: boolean, isInCampaign: boolean) => void;
+  getEmbedUrl: (url: string) => string | null;
 }
 
 const STORAGE_KEY = "realm-music-settings";
@@ -58,14 +61,40 @@ const defaultState: MusicState = {
   queue: [],
   externalPlaylistUrl: "",
   useExternalPlaylist: false,
+  externalIsPlaying: false,
 };
 
 const MusicContext = createContext<MusicContextType | undefined>(undefined);
+
+function getEmbedUrl(url: string): string | null {
+  if (url.includes("youtube.com") || url.includes("youtu.be")) {
+    const videoId = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1];
+    const playlistId = url.match(/[?&]list=([^"&?\/\s]+)/)?.[1];
+    if (playlistId) {
+      return `https://www.youtube.com/embed/videoseries?list=${playlistId}&autoplay=1&enablejsapi=1`;
+    }
+    if (videoId) {
+      return `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1`;
+    }
+  }
+  if (url.includes("spotify.com")) {
+    const match = url.match(/spotify\.com\/(playlist|album|track)\/([a-zA-Z0-9]+)/);
+    if (match) {
+      return `https://open.spotify.com/embed/${match[1]}/${match[2]}?theme=0`;
+    }
+  }
+  if (url.includes("soundcloud.com")) {
+    return `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&auto_play=true&hide_related=true&show_comments=false&show_user=true&show_reposts=false&visual=true`;
+  }
+  return null;
+}
 
 export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { theme } = useTheme();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const tickingRef = useRef<HTMLAudioElement | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const savedExternalUrlRef = useRef<string>("");
   
   const [settings, setSettings] = useState<MusicSettings>(() => {
     try {
@@ -81,8 +110,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const stored = localStorage.getItem(STATE_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        // Don't auto-play on load
-        return { ...defaultState, ...parsed, isPlaying: false };
+        return { ...defaultState, ...parsed, isPlaying: false, externalIsPlaying: false };
       }
       return defaultState;
     } catch {
@@ -90,10 +118,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
 
-  // Campaign state tracking
   const [campaignState, setCampaignState] = useState({ isRunning: false, isInCampaign: false });
 
-  // Get theme tracks
   const themeTracks = THEMES[theme]?.tracks || [];
 
   // Initialize audio elements
@@ -114,13 +140,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }, [settings]);
 
-  // Persist state (excluding isPlaying)
+  // Persist state
   useEffect(() => {
-    const { isPlaying, ...stateToStore } = state;
+    const { isPlaying, externalIsPlaying, ...stateToStore } = state;
     localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(stateToStore));
   }, [state]);
 
-  // Update volume when settings change
+  // Update volume
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = settings.volume;
@@ -149,7 +175,44 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => audio.removeEventListener("ended", handleEnded);
   }, [state.queue, state.currentTrackIndex, settings.loopPlaylist]);
 
-  // Handle campaign timer state changes for auto play/pause
+  // --- External playlist control helpers ---
+  const playExternal = useCallback(() => {
+    if (!state.externalPlaylistUrl) return;
+    const embedUrl = getEmbedUrl(state.externalPlaylistUrl);
+    if (!embedUrl) return;
+
+    // For YouTube: use postMessage
+    if (state.externalPlaylistUrl.includes("youtube.com") || state.externalPlaylistUrl.includes("youtu.be")) {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+      }
+    } else {
+      // For Spotify/SoundCloud: restore the src if it was cleared
+      if (iframeRef.current && !iframeRef.current.src) {
+        iframeRef.current.src = embedUrl;
+      }
+    }
+    setState(s => ({ ...s, externalIsPlaying: true }));
+  }, [state.externalPlaylistUrl]);
+
+  const pauseExternal = useCallback(() => {
+    if (!state.externalPlaylistUrl) return;
+
+    if (state.externalPlaylistUrl.includes("youtube.com") || state.externalPlaylistUrl.includes("youtu.be")) {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+      }
+    } else {
+      // For Spotify/SoundCloud: clear src to stop playback
+      if (iframeRef.current) {
+        savedExternalUrlRef.current = iframeRef.current.src;
+        iframeRef.current.src = "";
+      }
+    }
+    setState(s => ({ ...s, externalIsPlaying: false }));
+  }, [state.externalPlaylistUrl]);
+
+  // Handle campaign timer state changes
   useEffect(() => {
     const { isRunning, isInCampaign } = campaignState;
     
@@ -161,34 +224,57 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       tickingRef.current.currentTime = 0;
     }
 
-    // Auto play/pause based on settings
-    if (state.useExternalPlaylist) return; // Don't control external playlists
+    // Auto play/pause for INTERNAL tracks
+    if (!state.useExternalPlaylist) {
+      if (settings.playOnlyWhenTimerRunning) {
+        if (isRunning && isInCampaign && !state.isPlaying && state.currentTrack) {
+          audioRef.current?.play().catch(() => {});
+          setState(s => ({ ...s, isPlaying: true }));
+        } else if (!isRunning && state.isPlaying) {
+          audioRef.current?.pause();
+          setState(s => ({ ...s, isPlaying: false }));
+        }
+      }
 
-    if (settings.playOnlyWhenTimerRunning) {
-      if (isRunning && isInCampaign && !state.isPlaying && state.currentTrack) {
-        audioRef.current?.play().catch(() => {});
-        setState(s => ({ ...s, isPlaying: true }));
-      } else if (!isRunning && state.isPlaying) {
+      if (settings.playOnlyWhenTimerPaused) {
+        if (!isRunning && isInCampaign && !state.isPlaying && state.currentTrack) {
+          audioRef.current?.play().catch(() => {});
+          setState(s => ({ ...s, isPlaying: true }));
+        } else if (isRunning && state.isPlaying) {
+          audioRef.current?.pause();
+          setState(s => ({ ...s, isPlaying: false }));
+        }
+      }
+
+      if (!settings.playOutsideCampaigns && !isInCampaign && state.isPlaying) {
         audioRef.current?.pause();
         setState(s => ({ ...s, isPlaying: false }));
       }
     }
 
-    if (settings.playOnlyWhenTimerPaused) {
-      if (!isRunning && isInCampaign && !state.isPlaying && state.currentTrack) {
-        audioRef.current?.play().catch(() => {});
-        setState(s => ({ ...s, isPlaying: true }));
-      } else if (isRunning && state.isPlaying) {
-        audioRef.current?.pause();
-        setState(s => ({ ...s, isPlaying: false }));
+    // Auto play/pause for EXTERNAL playlists
+    if (state.useExternalPlaylist && state.externalPlaylistUrl) {
+      if (settings.playOnlyWhenTimerRunning) {
+        if (isRunning && isInCampaign && !state.externalIsPlaying) {
+          playExternal();
+        } else if (!isRunning && state.externalIsPlaying) {
+          pauseExternal();
+        }
+      }
+
+      if (settings.playOnlyWhenTimerPaused) {
+        if (!isRunning && isInCampaign && !state.externalIsPlaying) {
+          playExternal();
+        } else if (isRunning && state.externalIsPlaying) {
+          pauseExternal();
+        }
+      }
+
+      if (!settings.playOutsideCampaigns && !isInCampaign && state.externalIsPlaying) {
+        pauseExternal();
       }
     }
-
-    if (!settings.playOutsideCampaigns && !isInCampaign && state.isPlaying) {
-      audioRef.current?.pause();
-      setState(s => ({ ...s, isPlaying: false }));
-    }
-  }, [campaignState, settings, state.currentTrack, state.useExternalPlaylist]);
+  }, [campaignState, settings, state.currentTrack, state.useExternalPlaylist, state.externalPlaylistUrl, state.isPlaying, state.externalIsPlaying, playExternal, pauseExternal]);
 
   const playTrackAtIndex = useCallback((index: number) => {
     const track = state.queue[index];
@@ -205,7 +291,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [state.queue]);
 
   const play = useCallback(() => {
-    if (state.useExternalPlaylist) return;
+    if (state.useExternalPlaylist) {
+      playExternal();
+      return;
+    }
     
     if (state.currentTrack && audioRef.current) {
       audioRef.current.play().catch(console.error);
@@ -214,25 +303,33 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       playTrackAtIndex(0);
     } else if (themeTracks.length > 0) {
       setState(s => ({ ...s, queue: themeTracks }));
-      // Queue will trigger playTrackAtIndex via effect
       setTimeout(() => playTrackAtIndex(0), 0);
     }
-  }, [state.currentTrack, state.queue, state.useExternalPlaylist, themeTracks, playTrackAtIndex]);
+  }, [state.currentTrack, state.queue, state.useExternalPlaylist, themeTracks, playTrackAtIndex, playExternal]);
 
   const pause = useCallback(() => {
+    if (state.useExternalPlaylist) {
+      pauseExternal();
+      return;
+    }
     if (audioRef.current) {
       audioRef.current.pause();
     }
     setState(s => ({ ...s, isPlaying: false }));
-  }, []);
+  }, [state.useExternalPlaylist, pauseExternal]);
 
   const toggle = useCallback(() => {
+    if (state.useExternalPlaylist) {
+      if (state.externalIsPlaying) pauseExternal();
+      else playExternal();
+      return;
+    }
     if (state.isPlaying) {
       pause();
     } else {
       play();
     }
-  }, [state.isPlaying, play, pause]);
+  }, [state.isPlaying, state.useExternalPlaylist, state.externalIsPlaying, play, pause, playExternal, pauseExternal]);
 
   const playTrack = useCallback((track: ThemeTrack, index?: number) => {
     if (!audioRef.current) return;
@@ -273,7 +370,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const setExternalPlaylist = useCallback((url: string) => {
-    // Pause current track
     if (audioRef.current) {
       audioRef.current.pause();
     }
@@ -282,20 +378,30 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       externalPlaylistUrl: url,
       useExternalPlaylist: true,
       isPlaying: false,
+      externalIsPlaying: true, // auto-play on load
     }));
   }, []);
 
   const clearExternalPlaylist = useCallback(() => {
+    if (iframeRef.current) {
+      iframeRef.current.src = "";
+    }
     setState(s => ({
       ...s,
       externalPlaylistUrl: "",
       useExternalPlaylist: false,
+      externalIsPlaying: false,
     }));
   }, []);
 
   const notifyCampaignTimerState = useCallback((isRunning: boolean, isInCampaign: boolean) => {
     setCampaignState({ isRunning, isInCampaign });
   }, []);
+
+  // Compute the embed URL for the hidden iframe
+  const currentEmbedUrl = state.useExternalPlaylist && state.externalPlaylistUrl 
+    ? getEmbedUrl(state.externalPlaylistUrl) 
+    : null;
 
   return (
     <MusicContext.Provider
@@ -314,10 +420,32 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateSettings,
         setExternalPlaylist,
         clearExternalPlaylist,
+        playExternal,
+        pauseExternal,
         notifyCampaignTimerState,
+        getEmbedUrl,
       }}
     >
       {children}
+      {/* Persistent hidden iframe for external playlists */}
+      {currentEmbedUrl && (
+        <iframe
+          ref={iframeRef}
+          src={currentEmbedUrl}
+          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+          style={{
+            position: "fixed",
+            top: -9999,
+            left: -9999,
+            width: 1,
+            height: 1,
+            border: "none",
+            pointerEvents: "none",
+          }}
+          tabIndex={-1}
+          aria-hidden="true"
+        />
+      )}
     </MusicContext.Provider>
   );
 };

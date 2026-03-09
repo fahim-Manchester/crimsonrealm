@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Music, Play, Pause, SkipBack, SkipForward, Volume2, ExternalLink, X, ListMusic } from "lucide-react";
+import { Music, Play, Pause, SkipBack, SkipForward, Volume2, ExternalLink, X, ListMusic, Radio } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +37,8 @@ const MusicPlayer = () => {
     updateSettings,
     setExternalPlaylist,
     clearExternalPlaylist,
+    playExternal,
+    pauseExternal,
   } = useMusic();
 
   const handleLoadThemeTracks = () => {
@@ -51,34 +53,6 @@ const MusicPlayer = () => {
       setExternalPlaylist(externalUrl.trim());
     }
   };
-
-  const getEmbedUrl = (url: string): string | null => {
-    // YouTube
-    if (url.includes("youtube.com") || url.includes("youtu.be")) {
-      const videoId = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1];
-      const playlistId = url.match(/[?&]list=([^"&?\/\s]+)/)?.[1];
-      if (playlistId) {
-        return `https://www.youtube.com/embed/videoseries?list=${playlistId}&autoplay=1`;
-      }
-      if (videoId) {
-        return `https://www.youtube.com/embed/${videoId}?autoplay=1`;
-      }
-    }
-    // Spotify
-    if (url.includes("spotify.com")) {
-      const match = url.match(/spotify\.com\/(playlist|album|track)\/([a-zA-Z0-9]+)/);
-      if (match) {
-        return `https://open.spotify.com/embed/${match[1]}/${match[2]}?theme=0`;
-      }
-    }
-    // SoundCloud
-    if (url.includes("soundcloud.com")) {
-      return `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&auto_play=true&hide_related=true&show_comments=false&show_user=true&show_reposts=false&visual=true`;
-    }
-    return null;
-  };
-
-  const embedUrl = state.externalPlaylistUrl ? getEmbedUrl(state.externalPlaylistUrl) : null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -102,38 +76,73 @@ const MusicPlayer = () => {
               <h3 className="text-sm font-medium text-muted-foreground">Now Playing</h3>
               <div className="flex items-center justify-between bg-card/50 rounded-lg p-4 border border-border/50">
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">
-                    {state.currentTrack?.title || "No track selected"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {themeConfig.displayName} Soundtrack
-                  </p>
+                  {state.useExternalPlaylist ? (
+                    <>
+                      <p className="font-medium truncate flex items-center gap-2">
+                        <Radio className="h-4 w-4 text-primary animate-pulse" />
+                        External Playlist
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {state.externalIsPlaying ? "Playing in background" : "Paused"}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-medium truncate">
+                        {state.currentTrack?.title || "No track selected"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {themeConfig.displayName} Soundtrack
+                      </p>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button size="icon" variant="ghost" onClick={prevTrack} disabled={!state.currentTrack}>
-                    <SkipBack className="h-4 w-4" />
+                  {!state.useExternalPlaylist && (
+                    <Button size="icon" variant="ghost" onClick={prevTrack} disabled={!state.currentTrack}>
+                      <SkipBack className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    size="icon"
+                    variant="default"
+                    onClick={() => {
+                      if (state.useExternalPlaylist) {
+                        state.externalIsPlaying ? pauseExternal() : playExternal();
+                      } else {
+                        toggle();
+                      }
+                    }}
+                    disabled={!state.useExternalPlaylist && !state.currentTrack && state.queue.length === 0 && themeTracks.length === 0}
+                  >
+                    {(state.useExternalPlaylist ? state.externalIsPlaying : state.isPlaying) ? (
+                      <Pause className="h-4 w-4" />
+                    ) : (
+                      <Play className="h-4 w-4" />
+                    )}
                   </Button>
-                  <Button size="icon" variant="default" onClick={toggle} disabled={state.useExternalPlaylist && !state.currentTrack}>
-                    {state.isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                  </Button>
-                  <Button size="icon" variant="ghost" onClick={nextTrack} disabled={!state.currentTrack}>
-                    <SkipForward className="h-4 w-4" />
-                  </Button>
+                  {!state.useExternalPlaylist && (
+                    <Button size="icon" variant="ghost" onClick={nextTrack} disabled={!state.currentTrack}>
+                      <SkipForward className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
 
-              {/* Volume */}
-              <div className="flex items-center gap-3">
-                <Volume2 className="h-4 w-4 text-muted-foreground" />
-                <Slider
-                  value={[settings.volume * 100]}
-                  onValueChange={([v]) => setVolume(v / 100)}
-                  max={100}
-                  step={1}
-                  className="flex-1"
-                />
-                <span className="text-xs text-muted-foreground w-8">{Math.round(settings.volume * 100)}%</span>
-              </div>
+              {/* Volume - only for internal tracks */}
+              {!state.useExternalPlaylist && (
+                <div className="flex items-center gap-3">
+                  <Volume2 className="h-4 w-4 text-muted-foreground" />
+                  <Slider
+                    value={[settings.volume * 100]}
+                    onValueChange={([v]) => setVolume(v / 100)}
+                    max={100}
+                    step={1}
+                    className="flex-1"
+                  />
+                  <span className="text-xs text-muted-foreground w-8">{Math.round(settings.volume * 100)}%</span>
+                </div>
+              )}
             </div>
 
             <Separator />
@@ -160,11 +169,11 @@ const MusicPlayer = () => {
                     className={cn(
                       "w-full flex items-center gap-3 p-2 rounded-md text-left transition-colors",
                       "hover:bg-primary/10",
-                      state.currentTrack?.id === track.id && "bg-primary/20 text-primary"
+                      state.currentTrack?.id === track.id && !state.useExternalPlaylist && "bg-primary/20 text-primary"
                     )}
                   >
                     <div className="w-6 h-6 rounded bg-primary/20 flex items-center justify-center flex-shrink-0">
-                      {state.currentTrack?.id === track.id && state.isPlaying ? (
+                      {state.currentTrack?.id === track.id && state.isPlaying && !state.useExternalPlaylist ? (
                         <Pause className="h-3 w-3 text-primary" />
                       ) : (
                         <Play className="h-3 w-3 text-primary" />
@@ -185,7 +194,7 @@ const MusicPlayer = () => {
                 External Playlist
               </h3>
               <p className="text-xs text-muted-foreground">
-                Paste a link from Spotify, YouTube, or SoundCloud
+                Paste a link from Spotify, YouTube, or SoundCloud. Audio continues when this dialog is closed.
               </p>
               <div className="flex gap-2">
                 <Input
@@ -199,25 +208,18 @@ const MusicPlayer = () => {
                 </Button>
               </div>
               
-              {state.useExternalPlaylist && embedUrl && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">External player active</span>
-                    <Button size="sm" variant="ghost" onClick={clearExternalPlaylist}>
-                      <X className="h-3 w-3 mr-1" />
-                      Clear
-                    </Button>
+              {state.useExternalPlaylist && (
+                <div className="flex items-center justify-between bg-primary/5 rounded-lg p-3 border border-primary/20">
+                  <div className="flex items-center gap-2">
+                    <Radio className="h-4 w-4 text-primary animate-pulse" />
+                    <span className="text-sm text-primary font-medium">
+                      {state.externalIsPlaying ? "Playing in background" : "Paused"}
+                    </span>
                   </div>
-                  <div className="aspect-video rounded-lg overflow-hidden border border-border/50">
-                    <iframe
-                      src={embedUrl}
-                      width="100%"
-                      height="100%"
-                      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                      loading="lazy"
-                      className="border-0"
-                    />
-                  </div>
+                  <Button size="sm" variant="ghost" onClick={clearExternalPlaylist}>
+                    <X className="h-3 w-3 mr-1" />
+                    Clear
+                  </Button>
                 </div>
               )}
             </div>
