@@ -122,10 +122,10 @@ const Index = () => {
             <nav className="flex items-center gap-4">
               <ThemeSwitcher />
               <Link to="/auth?mode=login" className="gothic-button-secondary text-xs md:text-sm">
-                Sign In
+                {labels.authEnter}
               </Link>
               <Link to="/auth?mode=signup" className="gothic-button-primary text-xs md:text-sm">
-                Join Now
+                {labels.authJoin}
               </Link>
             </nav>
           </div>
