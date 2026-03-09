@@ -504,6 +504,13 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       "--sidebar-ring": "45 70% 52%",
     },
     backgroundCss: "radial-gradient(ellipse at 50% 0%, hsl(45 70% 52% / 0.06) 0%, transparent 50%), radial-gradient(ellipse at 80% 80%, hsl(210 40% 45% / 0.08) 0%, transparent 50%), linear-gradient(180deg, hsl(220 25% 7%) 0%, hsl(220 20% 5%) 100%)",
+    tracks: [
+      { id: "exec-1", title: "Boardroom Focus", url: "https://cdn.pixabay.com/audio/2022/10/14/audio_c4b5a1d94c.mp3" },
+      { id: "exec-2", title: "Executive Lounge", url: "https://cdn.pixabay.com/audio/2022/08/25/audio_4f3b0a8a67.mp3" },
+      { id: "exec-3", title: "Strategic Mind", url: "https://cdn.pixabay.com/audio/2022/05/13/audio_257112d5b6.mp3" },
+      { id: "exec-4", title: "Deep Work", url: "https://cdn.pixabay.com/audio/2021/11/01/audio_5f23e6a04d.mp3" },
+      { id: "exec-5", title: "The Pinnacle Suite", url: "https://cdn.pixabay.com/audio/2022/11/22/audio_6b73509fdc.mp3" },
+    ],
   },
 };
 
