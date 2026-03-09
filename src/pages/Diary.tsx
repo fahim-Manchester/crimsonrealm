@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTheme } from "@/contexts/ThemeContext";
 import PageLayout from "@/components/layout/PageLayout";
 import BookShelf from "@/components/diary/BookShelf";
 import CreateBookDialog from "@/components/diary/CreateBookDialog";
@@ -18,6 +19,8 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const Diary = () => {
+  const { themeConfig } = useTheme();
+  const labels = themeConfig.labels;
   const { books, loadingBooks, useBookEntries, createBook, deleteBook, addLinkedEntry, saveScribedContent, deleteEntry } = useDiary();
   
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -85,7 +88,7 @@ const Diary = () => {
   };
 
   return (
-    <PageLayout title="Diary" subtitle="Your personal collection of tomes and reflections">
+    <PageLayout title={labels.diary} subtitle={labels.diarySubtitle}>
       <BookShelf
         books={books}
         onAddBook={() => setCreateDialogOpen(true)}

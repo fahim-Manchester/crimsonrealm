@@ -6,18 +6,29 @@ export interface ThemeLabels {
   homeSubtitle: string;
   resources: string;
   resourcesDesc: string;
+  resourcesSubtitle: string;
   tasks: string;
   tasksDesc: string;
+  tasksSubtitle: string;
   projects: string;
   projectsDesc: string;
+  projectsSubtitle: string;
   campaigns: string;
   campaignsDesc: string;
+  campaignsSubtitle: string;
+  campaignsHeroTitle: string;
+  campaignsHeroDesc: string;
   achievements: string;
   achievementsDesc: string;
+  achievementsSubtitle: string;
   diary: string;
   diaryDesc: string;
+  diarySubtitle: string;
   codex: string;
   codexDesc: string;
+  codexSubtitle: string;
+  settings: string;
+  settingsSubtitle: string;
   logout: string;
   landingTitle: string;
   landingTitleAccent: string;
@@ -59,18 +70,29 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       homeSubtitle: "The Keep stands ready. Your domains await.",
       resources: "Chronicles",
       resourcesDesc: "Your collection of sacred resources. Knowledge to guide your journey.",
+      resourcesSubtitle: "Your collection of sacred resources and ancient knowledge",
       tasks: "Forge",
       tasksDesc: "Tasks to be hammered into completion. Organize by territory.",
+      tasksSubtitle: "Tasks to be hammered into completion",
       projects: "Territories",
       projectsDesc: "The projects you've claimed in your conquest. Manage your domains.",
+      projectsSubtitle: "The projects you've claimed in your conquest",
       campaigns: "Campaign",
       campaignsDesc: "Rally your forces. Combine tasks and territories into epic quests.",
+      campaignsSubtitle: "Combine tasks and territories into epic quests",
+      campaignsHeroTitle: "Rally Your Forces",
+      campaignsHeroDesc: "Combine tasks from the Forge and territories to conquer into epic campaigns. Drag campaigns between sections to organize your quests.",
       achievements: "Achievements",
       achievementsDesc: "Discover patterns in your knowledge. Invoke the Cleave.",
+      achievementsSubtitle: "Your trophies, medals, and gems of conquest",
       diary: "Diary",
       diaryDesc: "Your personal collection of tomes and reflections.",
+      diarySubtitle: "Your personal collection of tomes and reflections",
       codex: "The Codex",
       codexDesc: "Ancient knowledge to guide your path through the Realm.",
+      codexSubtitle: "A tome of knowledge for the weary traveler.",
+      settings: "Settings",
+      settingsSubtitle: "Configure your sanctuary",
       logout: "Leave Realm",
       landingTitle: "Enter the",
       landingTitleAccent: "Dark Realm",
@@ -104,18 +126,29 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       homeSubtitle: "Systems online. Ready to deploy.",
       resources: "Intel Files",
       resourcesDesc: "Intercepted data and classified intel. Stay sharp.",
+      resourcesSubtitle: "Classified data and intercepted intelligence",
       tasks: "Hit List",
       tasksDesc: "Targets locked. Execute with precision.",
+      tasksSubtitle: "Targets locked. Execute with precision.",
       projects: "Operations",
       projectsDesc: "Active ops in the field. Track and dominate.",
+      projectsSubtitle: "Active operations in the field",
       campaigns: "Raids",
       campaignsDesc: "Coordinate your squad. Strike fast, strike hard.",
+      campaignsSubtitle: "Coordinate your squad for maximum impact",
+      campaignsHeroTitle: "Deploy Your Squad",
+      campaignsHeroDesc: "Assemble targets from the Hit List and operations into coordinated raids. Drag raid cards between sections to manage status.",
       achievements: "Trophies",
       achievementsDesc: "Kills confirmed. See what you've unlocked.",
+      achievementsSubtitle: "Confirmed kills and unlocked rewards",
       diary: "Logs",
       diaryDesc: "Personal transmissions and field reports.",
+      diarySubtitle: "Personal transmissions and field reports",
       codex: "Field Manual",
       codexDesc: "Tactical briefings to keep you combat-ready.",
+      codexSubtitle: "Tactical briefings and operational guides.",
+      settings: "Settings",
+      settingsSubtitle: "Configure your terminal",
       logout: "Log Off",
       landingTitle: "Enter the",
       landingTitleAccent: "Neon Grid",
@@ -183,18 +216,29 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       homeSubtitle: "The hearth is warm. Choose your path.",
       resources: "Scrolls",
       resourcesDesc: "Ancient scrolls and gathered wisdom from across the lands.",
+      resourcesSubtitle: "Ancient scrolls and gathered wisdom",
       tasks: "Quests",
       tasksDesc: "Brave deeds awaiting a hero. Honor and glory lie ahead.",
+      tasksSubtitle: "Brave deeds awaiting a hero",
       projects: "Lands",
       projectsDesc: "The kingdoms and territories under your stewardship.",
+      projectsSubtitle: "Kingdoms and territories under your stewardship",
       campaigns: "Adventures",
       campaignsDesc: "Grand adventures that span across the realm. Gather your party.",
+      campaignsSubtitle: "Grand adventures across the realm",
+      campaignsHeroTitle: "Gather Your Party",
+      campaignsHeroDesc: "Combine quests and lands into grand adventures. Drag adventure cards between sections to organize your journey.",
       achievements: "Honors",
       achievementsDesc: "Feats of legend. Your name echoes through the halls.",
+      achievementsSubtitle: "Feats of legend and earned honors",
       diary: "Journal",
       diaryDesc: "A traveler's journal of tales and discoveries.",
+      diarySubtitle: "A traveler's journal of tales and discoveries",
       codex: "Lore Book",
       codexDesc: "The collected lore of Eldergrove and beyond.",
+      codexSubtitle: "The collected lore and wisdom of the realm.",
+      settings: "Settings",
+      settingsSubtitle: "Configure your camp",
       logout: "Depart",
       landingTitle: "Enter the",
       landingTitleAccent: "Eldergrove",
@@ -262,18 +306,29 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       homeSubtitle: "Your empire awaits.",
       resources: "Briefs",
       resourcesDesc: "Curated intelligence and strategic resources at your disposal.",
+      resourcesSubtitle: "Curated intelligence and strategic resources",
       tasks: "Action Items",
       tasksDesc: "Priority deliverables. Execute with excellence.",
+      tasksSubtitle: "Priority deliverables requiring execution",
       projects: "Portfolios",
       projectsDesc: "Your portfolio of ventures and strategic initiatives.",
+      projectsSubtitle: "Your portfolio of ventures and initiatives",
       campaigns: "Sprints",
       campaignsDesc: "Coordinated sprints to drive results and close deals.",
+      campaignsSubtitle: "Coordinated sprints for maximum output",
+      campaignsHeroTitle: "Launch Your Sprint",
+      campaignsHeroDesc: "Assemble action items and portfolios into focused sprints. Drag sprint cards between sections to manage your pipeline.",
       achievements: "Milestones",
       achievementsDesc: "Key performance milestones. Track your ascent.",
+      achievementsSubtitle: "Key performance milestones and metrics",
       diary: "Memos",
       diaryDesc: "Private notes and executive summaries.",
+      diarySubtitle: "Private notes and executive summaries",
       codex: "Handbook",
       codexDesc: "Your comprehensive guide to operational excellence.",
+      codexSubtitle: "Your comprehensive operational guide.",
+      settings: "Settings",
+      settingsSubtitle: "Configure your workspace",
       logout: "Sign Out",
       landingTitle: "Welcome to",
       landingTitleAccent: "The Pinnacle",

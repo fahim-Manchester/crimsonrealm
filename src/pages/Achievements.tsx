@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTheme } from "@/contexts/ThemeContext";
 import PageLayout from "@/components/layout/PageLayout";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { Trophy, Award, Gem, Clock } from "lucide-react";
@@ -24,6 +25,8 @@ interface CompletedTask {
 
 const Achievements = () => {
   const { user, loading: authLoading } = useAuth();
+  const { themeConfig } = useTheme();
+  const labels = themeConfig.labels;
   const [completedProjects, setCompletedProjects] = useState<CompletedProject[]>([]);
   const [completedTasks, setCompletedTasks] = useState<CompletedTask[]>([]);
   const [allProjects, setAllProjects] = useState<{ id: string; name: string; status: string | null }[]>([]);
@@ -80,7 +83,7 @@ const Achievements = () => {
   if (authLoading || loading) return <LoadingSpinner />;
 
   return (
-    <PageLayout title="Achievements" subtitle="Your trophies, medals, and gems of conquest">
+    <PageLayout title={labels.achievements} subtitle={labels.achievementsSubtitle}>
       <div className="max-w-6xl mx-auto space-y-12">
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

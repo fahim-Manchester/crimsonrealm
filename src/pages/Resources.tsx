@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCleaveDismantle } from "@/hooks/useCleaveDismantle";
+import { useTheme } from "@/contexts/ThemeContext";
 import PageLayout from "@/components/layout/PageLayout";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import GroupedDataTable from "@/components/shared/GroupedDataTable";
@@ -33,6 +34,8 @@ interface Project {
 
 const Resources = () => {
   const { user, loading: authLoading } = useAuth();
+  const { themeConfig } = useTheme();
+  const labels = themeConfig.labels;
   const [resources, setResources] = useState<Resource[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -193,7 +196,7 @@ const Resources = () => {
   if (authLoading || loading) return <LoadingSpinner />;
 
   return (
-    <PageLayout title="Chronicles" subtitle="Your collection of sacred resources and ancient knowledge">
+    <PageLayout title={labels.resources} subtitle={labels.resourcesSubtitle}>
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row justify-between gap-4">
           <CleaveControls

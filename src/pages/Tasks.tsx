@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCleaveDismantle } from "@/hooks/useCleaveDismantle";
+import { useTheme } from "@/contexts/ThemeContext";
 import PageLayout from "@/components/layout/PageLayout";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import GroupedDataTable from "@/components/shared/GroupedDataTable";
@@ -49,6 +50,8 @@ const priorityColors: Record<string, string> = {
 
 const Tasks = () => {
   const { user, loading: authLoading } = useAuth();
+  const { themeConfig } = useTheme();
+  const labels = themeConfig.labels;
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -242,7 +245,7 @@ const Tasks = () => {
   if (authLoading || loading) return <LoadingSpinner />;
 
   return (
-    <PageLayout title="The Forge" subtitle="Tasks to be hammered into completion">
+    <PageLayout title={labels.tasks} subtitle={labels.tasksSubtitle}>
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row justify-between gap-4">
           <div className="flex flex-wrap items-center gap-2">

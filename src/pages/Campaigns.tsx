@@ -12,10 +12,13 @@ import { DroppableCampaignSection } from "@/components/campaigns/DroppableCampai
 import { EditCampaignDialog } from "@/components/campaigns/EditCampaignDialog";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { useAuth } from "@/hooks/useAuth";
+import { useTheme } from "@/contexts/ThemeContext";
 import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
 
 const Campaigns = () => {
   const { user, loading: authLoading } = useAuth();
+  const { theme, themeConfig } = useTheme();
+  const labels = themeConfig.labels;
   const {
     campaigns,
     availableTasks,
@@ -167,15 +170,16 @@ const Campaigns = () => {
     </div>
   );
 
+  const bgStyle = theme === "gothic"
+    ? { backgroundImage: `url(${gothicHeroBg})` }
+    : { background: themeConfig.backgroundCss };
+
   return (
     <div className="relative min-h-screen overflow-hidden">
       {/* Background */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: `url(${gothicHeroBg})` }}
-      />
+      <div className="absolute inset-0 bg-cover bg-center bg-no-repeat" style={bgStyle} />
       <div className="absolute inset-0 bg-background/80" />
-      <div className="absolute inset-0 bg-gradient-fog opacity-30" />
+      {theme === "gothic" && <div className="absolute inset-0 bg-gradient-fog opacity-30" />}
 
       {/* Content */}
       <div className="relative z-10 min-h-screen">
@@ -188,7 +192,7 @@ const Campaigns = () => {
             <div className="flex items-center gap-3">
               <Swords className="w-6 h-6 text-primary" />
               <h1 className="font-cinzel text-xl md:text-2xl font-bold tracking-widest text-foreground">
-                Campaign Mode
+                {labels.campaigns} Mode
               </h1>
             </div>
           </div>
@@ -202,11 +206,10 @@ const Campaigns = () => {
           {/* Hero */}
           <div className="text-center mb-6 md:mb-10">
             <h2 className="text-gothic-title text-2xl md:text-3xl mb-3">
-              Rally Your <span className="text-primary">Forces</span>
+              {labels.campaignsHeroTitle.split(" ").slice(0, -1).join(" ")} <span className="text-primary">{labels.campaignsHeroTitle.split(" ").slice(-1)}</span>
             </h2>
             <p className="font-crimson text-muted-foreground max-w-xl mx-auto">
-              Combine tasks from the Forge and territories to conquer into epic campaigns. 
-              Drag campaigns between sections to organize your quests.
+              {labels.campaignsHeroDesc}
             </p>
           </div>
 
@@ -217,7 +220,7 @@ const Campaigns = () => {
               className="gothic-button-primary flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
-              Create Campaign
+              Create {labels.campaigns}
             </Button>
           </div>
 
