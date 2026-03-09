@@ -387,6 +387,13 @@ export const THEMES: Record<ThemeId, ThemeConfig> = {
       "--sidebar-ring": "42 80% 50%",
     },
     backgroundCss: "radial-gradient(ellipse at 30% 70%, hsl(42 80% 50% / 0.08) 0%, transparent 50%), radial-gradient(ellipse at 70% 30%, hsl(150 55% 35% / 0.12) 0%, transparent 50%), radial-gradient(ellipse at 50% 50%, hsl(30 30% 15% / 0.3) 0%, transparent 70%), linear-gradient(180deg, hsl(150 20% 7%) 0%, hsl(30 15% 6%) 100%)",
+    tracks: [
+      { id: "fantasy-1", title: "The Wanderer's Path", url: "https://cdn.pixabay.com/audio/2022/02/22/audio_d1718ab41b.mp3" },
+      { id: "fantasy-2", title: "Eldergrove Theme", url: "https://cdn.pixabay.com/audio/2022/03/10/audio_0f8c37d72c.mp3" },
+      { id: "fantasy-3", title: "Tavern Rest", url: "https://cdn.pixabay.com/audio/2022/01/20/audio_6a551a2949.mp3" },
+      { id: "fantasy-4", title: "Quest Begins", url: "https://cdn.pixabay.com/audio/2022/05/17/audio_407815a472.mp3" },
+      { id: "fantasy-5", title: "Forest Whispers", url: "https://cdn.pixabay.com/audio/2021/09/06/audio_c2b33ebaa2.mp3" },
+    ],
   },
 
   executive: {
