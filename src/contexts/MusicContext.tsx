@@ -89,10 +89,52 @@ function getEmbedUrl(url: string): string | null {
   return null;
 }
 
+// Generates a repeating clock tick using Web Audio API
+function createTickingEngine() {
+  let audioCtx: AudioContext | null = null;
+  let intervalId: ReturnType<typeof setInterval> | null = null;
+
+  function tick() {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.03);
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.06);
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + 0.06);
+  }
+
+  return {
+    start() {
+      if (intervalId) return;
+      if (!audioCtx) audioCtx = new AudioContext();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      tick(); // immediate first tick
+      intervalId = setInterval(tick, 1000);
+    },
+    stop() {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    },
+    destroy() {
+      this.stop();
+      audioCtx?.close();
+      audioCtx = null;
+    },
+  };
+}
+
 export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { theme } = useTheme();
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const tickingRef = useRef<HTMLAudioElement | null>(null);
+  const tickingEngineRef = useRef<ReturnType<typeof createTickingEngine> | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const savedExternalUrlRef = useRef<string>("");
   
@@ -128,11 +170,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       audioRef.current = new Audio();
       audioRef.current.volume = settings.volume;
     }
-    if (!tickingRef.current) {
-      tickingRef.current = new Audio("/audio/tick.mp3");
-      tickingRef.current.loop = true;
-      tickingRef.current.volume = 0.3;
+    if (!tickingEngineRef.current) {
+      tickingEngineRef.current = createTickingEngine();
     }
+    return () => {
+      tickingEngineRef.current?.destroy();
+    };
   }, []);
 
   // Persist settings
