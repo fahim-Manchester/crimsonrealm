@@ -152,7 +152,7 @@ const Auth = () => {
                   : "text-muted-foreground border-b border-border hover:text-foreground"
               }`}
             >
-              Sign In
+              {labels.authEnter}
             </button>
             <button
               onClick={() => setIsLogin(false)}
@@ -162,7 +162,7 @@ const Auth = () => {
                   : "text-muted-foreground border-b border-border hover:text-foreground"
               }`}
             >
-              Sign Up
+              {labels.authCreate}
             </button>
           </div>
 
@@ -238,7 +238,7 @@ const Auth = () => {
                   onClick={() => setIsLogin(true)}
                   className="text-primary hover:underline"
                 >
-                  Sign in
+                  {labels.authEnter}
                 </button>
               </>
             )}

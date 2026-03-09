@@ -122,10 +122,10 @@ const Index = () => {
             <nav className="flex items-center gap-4">
               <ThemeSwitcher />
               <Link to="/auth?mode=login" className="gothic-button-secondary text-xs md:text-sm">
-                Sign In
+                {labels.authEnter}
               </Link>
               <Link to="/auth?mode=signup" className="gothic-button-primary text-xs md:text-sm">
-                Join Now
+                {labels.authJoin}
               </Link>
             </nav>
           </div>
@@ -153,7 +153,7 @@ const Index = () => {
                 {labels.landingCta}
               </Link>
               <Link to="/auth?mode=login" className="gothic-button-secondary w-full sm:w-auto">
-                {labels.landingCtaSecondary}
+                {labels.authEnter}
               </Link>
             </div>
 
@@ -343,7 +343,7 @@ const Index = () => {
                 {labels.landingCta} <ArrowRight size={16} />
               </Link>
               <Link to="/auth?mode=login" className="gothic-button-secondary">
-                {labels.landingCtaSecondary}
+                {labels.authEnter}
               </Link>
             </div>
           </div>
