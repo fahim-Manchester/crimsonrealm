@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCleaveDismantle } from "@/hooks/useCleaveDismantle";
+import { useTheme } from "@/contexts/ThemeContext";
 import PageLayout from "@/components/layout/PageLayout";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import GroupedDataTable from "@/components/shared/GroupedDataTable";
