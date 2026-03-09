@@ -25,6 +25,8 @@ interface CompletedTask {
 
 const Achievements = () => {
   const { user, loading: authLoading } = useAuth();
+  const { themeConfig } = useTheme();
+  const labels = themeConfig.labels;
   const [completedProjects, setCompletedProjects] = useState<CompletedProject[]>([]);
   const [completedTasks, setCompletedTasks] = useState<CompletedTask[]>([]);
   const [allProjects, setAllProjects] = useState<{ id: string; name: string; status: string | null }[]>([]);
