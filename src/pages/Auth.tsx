@@ -152,7 +152,7 @@ const Auth = () => {
                   : "text-muted-foreground border-b border-border hover:text-foreground"
               }`}
             >
-              Sign In
+              {labels.authEnter}
             </button>
             <button
               onClick={() => setIsLogin(false)}
