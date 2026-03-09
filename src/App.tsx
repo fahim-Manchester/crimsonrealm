@@ -15,6 +15,7 @@ import Campaigns from "./pages/Campaigns";
 import CampaignSession from "./pages/CampaignSession";
 import Diary from "./pages/Diary";
 import Settings from "./pages/Settings";
+import Codex from "./pages/Codex";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
