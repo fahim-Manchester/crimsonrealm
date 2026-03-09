@@ -40,6 +40,24 @@ export interface ThemeLabels {
   authEnter: string;
   authCreate: string;
   authBackLink: string;
+  // Landing page sections
+  landingPurposeTitle: string;
+  landingPurposeDesc: string;
+  landingPurposeMobile: string;
+  landingFeature1Title: string;
+  landingFeature1Desc: string;
+  landingFeature2Title: string;
+  landingFeature2Desc: string;
+  landingFeature3Title: string;
+  landingFeature3Desc: string;
+  landingFeature4Title: string;
+  landingFeature4Desc: string;
+  landingADHDTitle: string;
+  landingADHDDesc: string;
+  landingThemesTitle: string;
+  landingThemesDesc: string;
+  landingVideoTitle: string;
+  landingVideoDesc: string;
 }
 
 export interface ThemeConfig {
