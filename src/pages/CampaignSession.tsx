@@ -210,6 +210,7 @@ const CampaignSession = () => {
           </div>
           
           <div className="flex items-center gap-2 flex-wrap">
+            <MusicPlayer />
             <Button
               variant="outline"
               size="sm"
