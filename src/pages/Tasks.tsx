@@ -50,6 +50,8 @@ const priorityColors: Record<string, string> = {
 
 const Tasks = () => {
   const { user, loading: authLoading } = useAuth();
+  const { themeConfig } = useTheme();
+  const labels = themeConfig.labels;
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
