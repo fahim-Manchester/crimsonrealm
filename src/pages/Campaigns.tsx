@@ -192,7 +192,7 @@ const Campaigns = () => {
             <div className="flex items-center gap-3">
               <Swords className="w-6 h-6 text-primary" />
               <h1 className="font-cinzel text-xl md:text-2xl font-bold tracking-widest text-foreground">
-                Campaign Mode
+                {labels.campaigns} Mode
               </h1>
             </div>
           </div>
