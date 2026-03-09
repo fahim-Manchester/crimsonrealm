@@ -170,15 +170,16 @@ const Campaigns = () => {
     </div>
   );
 
+  const bgStyle = theme === "gothic"
+    ? { backgroundImage: `url(${gothicHeroBg})` }
+    : { background: themeConfig.backgroundCss };
+
   return (
     <div className="relative min-h-screen overflow-hidden">
       {/* Background */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: `url(${gothicHeroBg})` }}
-      />
+      <div className="absolute inset-0 bg-cover bg-center bg-no-repeat" style={bgStyle} />
       <div className="absolute inset-0 bg-background/80" />
-      <div className="absolute inset-0 bg-gradient-fog opacity-30" />
+      {theme === "gothic" && <div className="absolute inset-0 bg-gradient-fog opacity-30" />}
 
       {/* Content */}
       <div className="relative z-10 min-h-screen">
