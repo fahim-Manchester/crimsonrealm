@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const Diary = () => {
+  const { themeConfig } = useTheme();
+  const labels = themeConfig.labels;
   const { books, loadingBooks, useBookEntries, createBook, deleteBook, addLinkedEntry, saveScribedContent, deleteEntry } = useDiary();
   
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
