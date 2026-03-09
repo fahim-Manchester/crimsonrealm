@@ -60,6 +60,12 @@ export interface ThemeLabels {
   landingVideoDesc: string;
 }
 
+export interface ThemeTrack {
+  id: string;
+  title: string;
+  url: string; // Audio URL or placeholder
+}
+
 export interface ThemeConfig {
   id: ThemeId;
   displayName: string;
@@ -74,6 +80,7 @@ export interface ThemeConfig {
   };
   cssVariables: Record<string, string>;
   backgroundCss: string; // CSS gradient or image for page backgrounds
+  tracks: ThemeTrack[]; // 5 tracks per theme
 }
 
 export const THEMES: Record<ThemeId, ThemeConfig> = {
