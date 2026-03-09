@@ -51,7 +51,7 @@ const defaultSettings: MusicSettings = {
   playOutsideCampaigns: true,
   clockTickingEnabled: false,
   volume: 0.7,
-  loopPlaylist: true,
+  loopTrack: true,
 };
 
 const defaultState: MusicState = {
