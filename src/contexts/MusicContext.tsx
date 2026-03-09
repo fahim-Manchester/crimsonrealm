@@ -19,6 +19,7 @@ interface MusicState {
   externalPlaylistUrl: string;
   useExternalPlaylist: boolean;
   externalIsPlaying: boolean;
+  playAllMode: boolean;
 }
 
 interface MusicContextType {
@@ -40,10 +41,15 @@ interface MusicContextType {
   pauseExternal: () => void;
   notifyCampaignTimerState: (isRunning: boolean, isInCampaign: boolean) => void;
   getEmbedUrl: (url: string) => string | null;
+  setPlayAllMode: (mode: boolean) => void;
 }
 
 const STORAGE_KEY = "realm-music-settings";
 const STATE_STORAGE_KEY = "realm-music-state";
+
+const FADE_DURATION = 500;
+const FADE_INTERVAL = 20;
+const FADE_STEPS = FADE_DURATION / FADE_INTERVAL;
 
 const defaultSettings: MusicSettings = {
   playOnlyWhenTimerRunning: false,
@@ -62,6 +68,7 @@ const defaultState: MusicState = {
   externalPlaylistUrl: "",
   useExternalPlaylist: false,
   externalIsPlaying: false,
+  playAllMode: false,
 };
 
 const MusicContext = createContext<MusicContextType | undefined>(undefined);
@@ -89,24 +96,42 @@ function getEmbedUrl(url: string): string | null {
   return null;
 }
 
-// Generates a repeating clock tick using Web Audio API
+// Pleasant clock ticking sound — soft woodblock/metronome style
 function createTickingEngine() {
   let audioCtx: AudioContext | null = null;
   let intervalId: ReturnType<typeof setInterval> | null = null;
 
   function tick() {
     if (!audioCtx) return;
-    const osc = audioCtx.createOscillator();
+    const t = audioCtx.currentTime;
+
+    // Create a short noise burst filtered to sound like a soft wooden tick
+    const bufferSize = audioCtx.sampleRate * 0.02; // 20ms
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 8);
+    }
+
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+
+    // Bandpass filter to give it a woody "tok" character
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(1800, t);
+    filter.Q.setValueAtTime(2, t);
+
+    // Gentle gain envelope
     const gain = audioCtx.createGain();
-    osc.connect(gain);
+    gain.gain.setValueAtTime(0.12, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+
+    source.connect(filter);
+    filter.connect(gain);
     gain.connect(audioCtx.destination);
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.03);
-    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.06);
-    osc.start(audioCtx.currentTime);
-    osc.stop(audioCtx.currentTime + 0.06);
+    source.start(t);
+    source.stop(t + 0.05);
   }
 
   return {
@@ -114,7 +139,7 @@ function createTickingEngine() {
       if (intervalId) return;
       if (!audioCtx) audioCtx = new AudioContext();
       if (audioCtx.state === "suspended") audioCtx.resume();
-      tick(); // immediate first tick
+      tick();
       intervalId = setInterval(tick, 1000);
     },
     stop() {
@@ -137,6 +162,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const tickingEngineRef = useRef<ReturnType<typeof createTickingEngine> | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const savedExternalUrlRef = useRef<string>("");
+  const fadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const targetVolumeRef = useRef<number>(0.7);
   
   const [settings, setSettings] = useState<MusicSettings>(() => {
     try {
@@ -164,6 +191,62 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const themeTracks = THEMES[theme]?.tracks || [];
 
+  // Keep targetVolumeRef in sync
+  useEffect(() => {
+    targetVolumeRef.current = settings.volume;
+  }, [settings.volume]);
+
+  // --- Fade helpers ---
+  const cancelFade = useCallback(() => {
+    if (fadeIntervalRef.current) {
+      clearInterval(fadeIntervalRef.current);
+      fadeIntervalRef.current = null;
+    }
+  }, []);
+
+  const fadeOut = useCallback((callback?: () => void) => {
+    cancelFade();
+    const audio = audioRef.current;
+    if (!audio) { callback?.(); return; }
+
+    const startVol = audio.volume;
+    if (startVol <= 0) { callback?.(); return; }
+    const step = startVol / FADE_STEPS;
+    let currentStep = 0;
+
+    fadeIntervalRef.current = setInterval(() => {
+      currentStep++;
+      const newVol = Math.max(0, startVol - step * currentStep);
+      audio.volume = newVol;
+      if (currentStep >= FADE_STEPS) {
+        cancelFade();
+        audio.volume = 0;
+        callback?.();
+      }
+    }, FADE_INTERVAL);
+  }, [cancelFade]);
+
+  const fadeIn = useCallback(() => {
+    cancelFade();
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const target = targetVolumeRef.current;
+    audio.volume = 0;
+    const step = target / FADE_STEPS;
+    let currentStep = 0;
+
+    fadeIntervalRef.current = setInterval(() => {
+      currentStep++;
+      const newVol = Math.min(target, step * currentStep);
+      audio.volume = newVol;
+      if (currentStep >= FADE_STEPS) {
+        cancelFade();
+        audio.volume = target;
+      }
+    }, FADE_INTERVAL);
+  }, [cancelFade]);
+
   // Initialize audio elements
   useEffect(() => {
     if (!audioRef.current) {
@@ -174,6 +257,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       tickingEngineRef.current = createTickingEngine();
     }
     return () => {
+      cancelFade();
       tickingEngineRef.current?.destroy();
     };
   }, []);
@@ -189,9 +273,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(stateToStore));
   }, [state]);
 
-  // Update volume
+  // Update volume (only when not fading)
   useEffect(() => {
-    if (audioRef.current) {
+    if (audioRef.current && !fadeIntervalRef.current) {
       audioRef.current.volume = settings.volume;
     }
   }, [settings.volume]);
@@ -202,13 +286,24 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!audio) return;
 
     const handleEnded = () => {
-      if (settings.loopTrack && state.currentTrackIndex >= 0) {
-        // Loop the same track
-        playTrackAtIndex(state.currentTrackIndex);
+      if (state.playAllMode && state.queue.length > 1) {
+        // Play All mode: always advance sequentially
+        const nextIndex = state.currentTrackIndex + 1;
+        if (nextIndex < state.queue.length) {
+          fadeInTrackAtIndex(nextIndex);
+        } else if (settings.loopTrack) {
+          // Wrap around to first track
+          fadeInTrackAtIndex(0);
+        } else {
+          setState(s => ({ ...s, isPlaying: false }));
+        }
+      } else if (settings.loopTrack && state.currentTrackIndex >= 0) {
+        // Single track loop
+        fadeInTrackAtIndex(state.currentTrackIndex);
       } else if (state.queue.length > 0) {
         const nextIndex = state.currentTrackIndex + 1;
         if (nextIndex < state.queue.length) {
-          playTrackAtIndex(nextIndex);
+          fadeInTrackAtIndex(nextIndex);
         } else {
           setState(s => ({ ...s, isPlaying: false }));
         }
@@ -217,7 +312,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     audio.addEventListener("ended", handleEnded);
     return () => audio.removeEventListener("ended", handleEnded);
-  }, [state.queue, state.currentTrackIndex, settings.loopTrack]);
+  }, [state.queue, state.currentTrackIndex, settings.loopTrack, state.playAllMode]);
 
   // --- External playlist control helpers ---
   const playExternal = useCallback(() => {
@@ -225,13 +320,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const embedUrl = getEmbedUrl(state.externalPlaylistUrl);
     if (!embedUrl) return;
 
-    // For YouTube: use postMessage
     if (state.externalPlaylistUrl.includes("youtube.com") || state.externalPlaylistUrl.includes("youtu.be")) {
       if (iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
       }
     } else {
-      // For Spotify/SoundCloud: restore the src if it was cleared
       if (iframeRef.current && !iframeRef.current.src) {
         iframeRef.current.src = embedUrl;
       }
@@ -247,7 +340,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         iframeRef.current.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
       }
     } else {
-      // For Spotify/SoundCloud: clear src to stop playback
       if (iframeRef.current) {
         savedExternalUrlRef.current = iframeRef.current.src;
         iframeRef.current.src = "";
@@ -272,9 +364,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (settings.playOnlyWhenTimerRunning) {
         if (isRunning && isInCampaign && !state.isPlaying && state.currentTrack) {
           audioRef.current?.play().catch(() => {});
+          fadeIn();
           setState(s => ({ ...s, isPlaying: true }));
         } else if (!isRunning && state.isPlaying) {
-          audioRef.current?.pause();
+          fadeOut(() => {
+            audioRef.current?.pause();
+          });
           setState(s => ({ ...s, isPlaying: false }));
         }
       }
@@ -282,15 +377,20 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (settings.playOnlyWhenTimerPaused) {
         if (!isRunning && isInCampaign && !state.isPlaying && state.currentTrack) {
           audioRef.current?.play().catch(() => {});
+          fadeIn();
           setState(s => ({ ...s, isPlaying: true }));
         } else if (isRunning && state.isPlaying) {
-          audioRef.current?.pause();
+          fadeOut(() => {
+            audioRef.current?.pause();
+          });
           setState(s => ({ ...s, isPlaying: false }));
         }
       }
 
       if (!settings.playOutsideCampaigns && !isInCampaign && state.isPlaying) {
-        audioRef.current?.pause();
+        fadeOut(() => {
+          audioRef.current?.pause();
+        });
         setState(s => ({ ...s, isPlaying: false }));
       }
     }
@@ -317,8 +417,26 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         pauseExternal();
       }
     }
-  }, [campaignState, settings, state.currentTrack, state.useExternalPlaylist, state.externalPlaylistUrl, state.isPlaying, state.externalIsPlaying, playExternal, pauseExternal]);
+  }, [campaignState, settings, state.currentTrack, state.useExternalPlaylist, state.externalPlaylistUrl, state.isPlaying, state.externalIsPlaying, playExternal, pauseExternal, fadeIn, fadeOut]);
 
+  // Play a track at index with fade-in
+  const fadeInTrackAtIndex = useCallback((index: number) => {
+    const track = state.queue[index];
+    if (!track || !audioRef.current) return;
+
+    audioRef.current.src = track.url;
+    audioRef.current.volume = 0;
+    audioRef.current.play().catch(console.error);
+    fadeIn();
+    setState(s => ({
+      ...s,
+      currentTrack: track,
+      currentTrackIndex: index,
+      isPlaying: true,
+    }));
+  }, [state.queue, fadeIn]);
+
+  // Direct play (no fade, used internally)
   const playTrackAtIndex = useCallback((index: number) => {
     const track = state.queue[index];
     if (!track || !audioRef.current) return;
@@ -341,25 +459,28 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     
     if (state.currentTrack && audioRef.current) {
       audioRef.current.play().catch(console.error);
+      fadeIn();
       setState(s => ({ ...s, isPlaying: true }));
     } else if (state.queue.length > 0) {
-      playTrackAtIndex(0);
+      fadeInTrackAtIndex(0);
     } else if (themeTracks.length > 0) {
       setState(s => ({ ...s, queue: themeTracks }));
-      setTimeout(() => playTrackAtIndex(0), 0);
+      setTimeout(() => fadeInTrackAtIndex(0), 0);
     }
-  }, [state.currentTrack, state.queue, state.useExternalPlaylist, themeTracks, playTrackAtIndex, playExternal]);
+  }, [state.currentTrack, state.queue, state.useExternalPlaylist, themeTracks, fadeInTrackAtIndex, playExternal, fadeIn]);
 
   const pause = useCallback(() => {
     if (state.useExternalPlaylist) {
       pauseExternal();
       return;
     }
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
+    fadeOut(() => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    });
     setState(s => ({ ...s, isPlaying: false }));
-  }, [state.useExternalPlaylist, pauseExternal]);
+  }, [state.useExternalPlaylist, pauseExternal, fadeOut]);
 
   const toggle = useCallback(() => {
     if (state.useExternalPlaylist) {
@@ -377,28 +498,49 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const playTrack = useCallback((track: ThemeTrack, index?: number) => {
     if (!audioRef.current) return;
 
-    audioRef.current.src = track.url;
-    audioRef.current.play().catch(console.error);
-    setState(s => ({
-      ...s,
-      currentTrack: track,
-      currentTrackIndex: index ?? s.queue.findIndex(t => t.id === track.id),
-      isPlaying: true,
-      useExternalPlaylist: false,
-    }));
-  }, []);
+    const switchToTrack = () => {
+      audioRef.current!.src = track.url;
+      audioRef.current!.volume = 0;
+      audioRef.current!.play().catch(console.error);
+      fadeIn();
+      setState(s => ({
+        ...s,
+        currentTrack: track,
+        currentTrackIndex: index ?? s.queue.findIndex(t => t.id === track.id),
+        isPlaying: true,
+        useExternalPlaylist: false,
+      }));
+    };
+
+    // If currently playing, fade out first then switch
+    if (state.isPlaying && audioRef.current && !audioRef.current.paused) {
+      fadeOut(switchToTrack);
+    } else {
+      switchToTrack();
+    }
+  }, [state.isPlaying, fadeOut, fadeIn]);
 
   const nextTrack = useCallback(() => {
     if (state.queue.length === 0) return;
     const nextIndex = (state.currentTrackIndex + 1) % state.queue.length;
-    playTrackAtIndex(nextIndex);
-  }, [state.queue, state.currentTrackIndex, playTrackAtIndex]);
+    
+    if (state.isPlaying && audioRef.current && !audioRef.current.paused) {
+      fadeOut(() => fadeInTrackAtIndex(nextIndex));
+    } else {
+      fadeInTrackAtIndex(nextIndex);
+    }
+  }, [state.queue, state.currentTrackIndex, state.isPlaying, fadeOut, fadeInTrackAtIndex]);
 
   const prevTrack = useCallback(() => {
     if (state.queue.length === 0) return;
     const prevIndex = state.currentTrackIndex <= 0 ? state.queue.length - 1 : state.currentTrackIndex - 1;
-    playTrackAtIndex(prevIndex);
-  }, [state.queue, state.currentTrackIndex, playTrackAtIndex]);
+    
+    if (state.isPlaying && audioRef.current && !audioRef.current.paused) {
+      fadeOut(() => fadeInTrackAtIndex(prevIndex));
+    } else {
+      fadeInTrackAtIndex(prevIndex);
+    }
+  }, [state.queue, state.currentTrackIndex, state.isPlaying, fadeOut, fadeInTrackAtIndex]);
 
   const setQueue = useCallback((tracks: ThemeTrack[]) => {
     setState(s => ({ ...s, queue: tracks }));
@@ -412,18 +554,24 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setSettings(s => ({ ...s, ...newSettings }));
   }, []);
 
+  const setPlayAllMode = useCallback((mode: boolean) => {
+    setState(s => ({ ...s, playAllMode: mode }));
+  }, []);
+
   const setExternalPlaylist = useCallback((url: string) => {
     if (audioRef.current) {
-      audioRef.current.pause();
+      fadeOut(() => {
+        audioRef.current?.pause();
+      });
     }
     setState(s => ({
       ...s,
       externalPlaylistUrl: url,
       useExternalPlaylist: true,
       isPlaying: false,
-      externalIsPlaying: true, // auto-play on load
+      externalIsPlaying: true,
     }));
-  }, []);
+  }, [fadeOut]);
 
   const clearExternalPlaylist = useCallback(() => {
     if (iframeRef.current) {
@@ -441,7 +589,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setCampaignState({ isRunning, isInCampaign });
   }, []);
 
-  // Compute the embed URL for the hidden iframe
   const currentEmbedUrl = state.useExternalPlaylist && state.externalPlaylistUrl 
     ? getEmbedUrl(state.externalPlaylistUrl) 
     : null;
@@ -467,10 +614,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         pauseExternal,
         notifyCampaignTimerState,
         getEmbedUrl,
+        setPlayAllMode,
       }}
     >
       {children}
-      {/* Persistent hidden iframe for external playlists */}
       {currentEmbedUrl && (
         <iframe
           ref={iframeRef}
