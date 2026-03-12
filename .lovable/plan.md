@@ -1,78 +1,100 @@
 
-# Fix: Mobile PWA Layout -- Cramped UI and Overflow Issues
 
-## Problem
+# Timer Modes: Normal, Chess Clock & Pomodoro
 
-When running as a PWA on mobile (standalone mode), several screens have layout issues:
+## Overview
 
-1. **Campaign Session page (screenshot 4)**: The 4 clocks in a row (`grid-cols-4`) are too cramped on small screens -- labels like "CAMPAIGN TOTAL" and "CURRENT TASK" overflow their boxes, and time values like "01:17:34" get cut off.
+Add a **Timer Settings** popover (clock/gear icon) visible both on the Campaign Session page and the Campaigns list page. It exposes three timer modes: **Normal** (current behavior), **Chess Clock** (work/break alternation), and **Pomodoro** (structured work/short break/long break cycles). Settings persist in localStorage so your last config is remembered.
 
-2. **Campaign Cards (screenshots 2-3)**: The action buttons (edit, pause, play, complete, delete, refresh) all sit in one row next to the campaign title, causing the title to wrap excessively and buttons to feel cramped.
+## Timer Modes
 
-3. **Quest Items (screenshot 4)**: Items like "Dishes POP..." and "Coo..." are truncated too aggressively because the row has too many inline elements (grip + icon + bookmark + name + badge + time + edit button + status).
+### Normal (default)
+Exactly how it works now — manual start/pause, no automatic switching.
 
-4. **Home page header (screenshot 1)**: "REALM", settings icon, install checkmark, and "Leave Realm" button are tight but functional -- minor improvement possible.
+### Chess Clock
+Alternates between **Work** and **Break** periods:
+- Configurable work duration (default: 25 min) and break duration (default: 5 min)
+- Timer auto-switches between work and break when each period ends
+- Visual indicator shows current phase (Work / Break)
+- During break, task timer pauses; session timer keeps counting
+- Audio cue (short tone) when switching phases
 
-## Solution
+### Pomodoro
+Structured cycles with long break support:
+- Configurable: work minutes (default: 25), short break (default: 5), long break (default: 15), cycles before long break (default: 4)
+- Auto-starts next phase when current one ends
+- Shows current phase + cycle count (e.g. "Work 2/4")
+- After the configured number of work cycles, triggers a long break instead of short
+- Audio cue on phase transitions
 
-### 1. SessionClock -- Responsive sizing for small screens
+## UI Design
 
-**File: `src/components/campaigns/SessionClock.tsx`**
+### Timer Settings Button
+A small icon button (using `Timer` or `Settings2` from lucide) placed:
+- **Campaign Session page**: In the header, next to the MusicPlayer button
+- **Campaigns list page**: In the page header area
 
-- Reduce padding on mobile: `p-2 md:p-6` instead of `p-4 md:p-6`
-- Reduce time font size on mobile: `text-lg md:text-4xl` instead of `text-2xl md:text-4xl`
-- Reduce label font size: `text-[10px] md:text-sm`
+### Timer Settings Popover
+A `Popover` (not a dialog — lightweight, non-blocking) containing:
 
-### 2. Campaign Session Clocks Grid -- 2x2 on mobile, 4 columns on desktop
+```text
+┌─────────────────────────────┐
+│ ⏱ Timer Mode                │
+│                             │
+│ ○ Normal                    │
+│ ○ Chess Clock               │
+│ ○ Pomodoro                  │
+│                             │
+│ ─────────────────────────── │
+│ (shown when Chess Clock):   │
+│ Work:  [25] min             │
+│ Break: [ 5] min             │
+│                             │
+│ (shown when Pomodoro):      │
+│ Work:      [25] min         │
+│ Short break: [ 5] min       │
+│ Long break:  [15] min       │
+│ Cycles:      [ 4]           │
+└─────────────────────────────┘
+```
 
-**File: `src/pages/CampaignSession.tsx`**
+Uses `RadioGroup` for mode selection, `Input` (type number) for durations.
 
-- Change `grid-cols-4` to `grid-cols-2 md:grid-cols-4` so the 4 clocks arrange as a 2x2 grid on mobile
-- Reduce section padding on mobile
+## Persistence
 
-### 3. Campaign Session Header -- Wrap buttons on mobile
+Settings stored in localStorage under key `timerModeSettings`:
+```json
+{
+  "mode": "normal" | "chess" | "pomodoro",
+  "chess": { "workMinutes": 25, "breakMinutes": 5 },
+  "pomodoro": { "workMinutes": 25, "shortBreakMinutes": 5, "longBreakMinutes": 15, "cyclesBeforeLongBreak": 4 }
+}
+```
+Loaded on mount, saved on every change. No database needed.
 
-**File: `src/pages/CampaignSession.tsx`**
+## Implementation
 
-- Allow the header buttons ("New Session", "End Session") to wrap or stack on small screens using `flex-wrap`
-- Use shorter button text on mobile (icon-only or abbreviated)
+### New Files
 
-### 4. Campaign Card Action Buttons -- Wrap on mobile
-
-**File: `src/components/campaigns/CampaignCard.tsx`**
-
-- Change the action buttons container from a single row to `flex-wrap` so buttons wrap to a second line on small screens instead of cramming next to the title
-
-### 5. SortableTaskItem -- Better mobile layout
-
-**File: `src/components/campaigns/SortableTaskItem.tsx`**
-
-- Reduce gap and padding on mobile: `gap-2 p-2 md:gap-3 md:p-3`
-- Allow the task name to use `min-w-0` to ensure proper truncation
-- Hide the "POP-UP" / "HIDDEN" badge text on very small screens (keep just the icon)
-- Make the time display more compact on mobile
-
-### 6. Campaigns Page -- Reduce padding on mobile
-
-**File: `src/pages/Campaigns.tsx`**
-
-- Reduce horizontal padding: `px-4 md:px-12` instead of `px-6 md:px-12`
-- Reduce hero section margins on mobile
-
----
-
-## Technical Changes Summary
-
-| File | Changes |
+| File | Purpose |
 |------|---------|
-| `src/components/campaigns/SessionClock.tsx` | Smaller padding, font sizes on mobile |
-| `src/pages/CampaignSession.tsx` | 2x2 clock grid on mobile, wrap header buttons, reduce padding |
-| `src/components/campaigns/CampaignCard.tsx` | `flex-wrap` on action buttons |
-| `src/components/campaigns/SortableTaskItem.tsx` | Tighter mobile spacing, hide badge text on small screens |
-| `src/pages/Campaigns.tsx` | Reduce mobile padding |
+| `src/hooks/useTimerMode.ts` | Hook managing timer mode state, phase transitions, countdown logic, and localStorage persistence |
+| `src/components/campaigns/TimerModeSettings.tsx` | Popover UI component with mode selector and config inputs |
 
----
+### Modified Files
 
-## Key Principle
+| File | Change |
+|------|--------|
+| `src/pages/CampaignSession.tsx` | Import & render `TimerModeSettings` in header; integrate `useTimerMode` to auto-pause/resume based on phase; show current phase indicator near the clocks |
+| `src/pages/Campaigns.tsx` | Add `TimerModeSettings` button in header for pre-configuring before entering a campaign |
+| `src/hooks/useCampaignSession.ts` | No changes — timer modes wrap around the existing `startTimer`/`pauseTimer` calls rather than modifying the core timer logic |
 
-All changes use responsive Tailwind classes (e.g., `text-lg md:text-4xl`, `grid-cols-2 md:grid-cols-4`) so desktop remains unchanged while mobile gets a properly spaced layout.
+### How modes integrate with existing timer
+
+The `useTimerMode` hook:
+1. Accepts `isTimerRunning`, `startTimer`, `pauseTimer` from `useCampaignSession`
+2. When a mode is active and timer is running, it runs an internal countdown for the current phase
+3. When a phase ends, it calls `pauseTimer()` (for break) or `startTimer()` (for work), plays an audio cue, and advances to the next phase
+4. Exposes: `currentPhase` ("work" | "shortBreak" | "longBreak" | null), `phaseTimeRemaining`, `currentCycle`, `totalCycles`
+5. The phase countdown is shown as an additional display near the session clocks
+
