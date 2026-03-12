@@ -198,8 +198,16 @@ const Campaigns = () => {
               </h1>
             </div>
           </div>
-          <div className="font-crimson text-sm text-muted-foreground hidden md:block">
-            {user?.email}
+          <div className="flex items-center gap-3">
+            <TimerModeSettings
+              settings={timerModeHook.settings}
+              onUpdateSettings={timerModeHook.updateSettings}
+              onUpdateChess={timerModeHook.updateChessSettings}
+              onUpdatePomodoro={timerModeHook.updatePomodoroSettings}
+            />
+            <span className="font-crimson text-sm text-muted-foreground hidden md:block">
+              {user?.email}
+            </span>
           </div>
         </header>
 
