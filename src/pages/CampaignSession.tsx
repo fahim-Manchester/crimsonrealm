@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampaignSession } from "@/hooks/useCampaignSession";
+import { useTimerMode } from "@/hooks/useTimerMode";
 import { SessionClock } from "@/components/campaigns/SessionClock";
 import { QuestItemList } from "@/components/campaigns/QuestItemList";
 import { AddItemDialog } from "@/components/campaigns/AddItemDialog";
+import { TimerModeSettings } from "@/components/campaigns/TimerModeSettings";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { toast } from "sonner";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -56,6 +58,13 @@ const CampaignSession = () => {
     setItemParent
   } = useCampaignSession(campaign);
 
+  // Timer mode integration
+  const timerMode = useTimerMode({
+    isTimerRunning: sessionState.isRunning,
+    startTimer,
+    pauseTimer,
+  });
+
   // Notify music context of timer state for auto play/pause
   useEffect(() => {
     notifyCampaignTimerState(sessionState.isRunning, true);
@@ -93,9 +102,6 @@ const CampaignSession = () => {
     }
   }, [id, user, navigate]);
 
-  // Campaign total must be accurate to the second.
-  // We derive it from item totals (persisted seconds + current session seconds),
-  // rather than the DB campaign "minutes" field which is rounded.
   const campaignTotalSeconds = useMemo(() => {
     return items.reduce(
       (sum, item) => sum + (item.time_spent || 0) + (itemSessionTimes[item.id] || 0),
@@ -113,12 +119,14 @@ const CampaignSession = () => {
   };
 
   const handleEndSession = async () => {
+    timerMode.resetPhases();
     const savedMinutes = await endSession();
     toast.success(`Session ended. ${savedMinutes} minutes saved to campaign.`);
     navigate("/campaigns");
   };
 
   const handleNewSession = async () => {
+    timerMode.resetPhases();
     await startNewSession();
     toast.success("New session started!");
   };
@@ -185,6 +193,18 @@ const CampaignSession = () => {
     ? { backgroundImage: `url(${gothicHeroBg})` }
     : { background: themeConfig.backgroundCss };
 
+  // Phase display helpers
+  const phaseLabel = timerMode.currentPhase === "work" ? "Work"
+    : timerMode.currentPhase === "shortBreak" ? "Short Break"
+    : timerMode.currentPhase === "longBreak" ? "Long Break"
+    : null;
+
+  const formatPhaseTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div className="relative min-h-screen overflow-hidden">
       {/* Background */}
@@ -222,6 +242,12 @@ const CampaignSession = () => {
           </div>
           
           <div className="flex items-center gap-2 flex-wrap">
+            <TimerModeSettings
+              settings={timerMode.settings}
+              onUpdateSettings={timerMode.updateSettings}
+              onUpdateChess={timerMode.updateChessSettings}
+              onUpdatePomodoro={timerMode.updatePomodoroSettings}
+            />
             <MusicPlayer />
             <Button
               variant="outline"
@@ -244,6 +270,29 @@ const CampaignSession = () => {
             </Button>
           </div>
         </header>
+
+        {/* Phase Indicator */}
+        {timerMode.settings.mode !== "normal" && timerMode.currentPhase && (
+          <div className="px-4 md:px-8 pt-4">
+            <div className="max-w-4xl mx-auto flex items-center justify-center gap-3">
+              <div className={`px-4 py-2 rounded-sm border-2 text-center ${
+                timerMode.currentPhase === "work"
+                  ? "border-primary/60 bg-primary/10 text-primary"
+                  : "border-accent/60 bg-accent/10 text-accent"
+              }`}>
+                <span className="font-cinzel text-xs tracking-widest uppercase">{phaseLabel}</span>
+                {timerMode.settings.mode === "pomodoro" && timerMode.currentPhase === "work" && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {timerMode.currentCycle}/{timerMode.totalCycles}
+                  </span>
+                )}
+                <span className="ml-3 font-cinzel text-lg tabular-nums">
+                  {formatPhaseTime(timerMode.phaseTimeRemaining)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Clocks Section */}
         <section className="px-4 md:px-8 py-6 md:py-10">
