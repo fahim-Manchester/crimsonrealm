@@ -21,6 +21,7 @@ const Campaigns = () => {
   const { user, loading: authLoading } = useAuth();
   const { theme, themeConfig } = useTheme();
   const labels = themeConfig.labels;
+  const timerModeHook = useTimerMode({ isTimerRunning: false, startTimer: () => {}, pauseTimer: () => {} });
   const {
     campaigns,
     availableTasks,
