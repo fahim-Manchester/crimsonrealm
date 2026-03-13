@@ -1,4 +1,4 @@
-import { createRoot } from "react-dom/client";
+import { createRoot } from "react-dom/client"; // music-provider-fix
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { MusicProvider } from "@/contexts/MusicContext";
 import App from "@/App";
