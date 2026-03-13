@@ -786,7 +786,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }}
     >
       {children}
-      {/* Always render iframe for external playback (queue or temporary) */}
+      {/* Hidden iframe for external playback (queue or temporary) */}
       <iframe
         ref={iframeRef}
         allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
