@@ -148,7 +148,10 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
     }
   };
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
+    // Don't select task if user clicked on an interactive/editable area
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-no-select]')) return;
     if (!isCompleted && !isAbandoned) {
       onSelect();
     }
