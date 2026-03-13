@@ -597,8 +597,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const pause = useCallback(() => {
     if (state.useTemporary) { pauseTemporaryExternal(); return; }
     if (state.currentTrackIsExternal) {
-      // Stop iframe
-      if (iframeRef.current) iframeRef.current.src = "";
+      if (state.currentTrack && isYouTubeUrl(state.currentTrack.url)) {
+        cancelYTFade();
+        iframeRef.current?.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+      } else if (iframeRef.current) {
+        iframeRef.current.src = "";
+      }
       setState(s => ({ ...s, isPlaying: false }));
       return;
     }
