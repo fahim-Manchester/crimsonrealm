@@ -6,7 +6,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
 import InstallButton from "@/components/pwa/InstallButton";
 import ThemeSwitcher from "@/components/theme/ThemeSwitcher";
-import MusicPlayer from "@/components/music/MusicPlayer";
+
 
 interface PageLayoutProps {
   children: ReactNode;
@@ -46,7 +46,6 @@ const PageLayout = ({ children, title, subtitle }: PageLayoutProps) => {
           </Link>
           <nav className="flex items-center gap-4">
             <InstallButton />
-            <MusicPlayer />
             <ThemeSwitcher />
             <Link to="/home" className="font-crimson text-muted-foreground hover:text-foreground transition-colors">
               {labels.homeName}

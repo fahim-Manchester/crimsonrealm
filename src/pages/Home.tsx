@@ -8,7 +8,7 @@ import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
 import { Settings } from "lucide-react";
 import InstallButton from "@/components/pwa/InstallButton";
 import ThemeSwitcher from "@/components/theme/ThemeSwitcher";
-import MusicPlayer from "@/components/music/MusicPlayer";
+
 
 const Home = () => {
   const navigate = useNavigate();
@@ -48,7 +48,6 @@ const Home = () => {
               {user?.email}
             </div>
             <InstallButton />
-            <MusicPlayer />
             <ThemeSwitcher />
             <Link to="/settings" className="p-2 rounded-sm hover:bg-primary/10 transition-colors" title="Settings">
               <Settings className="h-5 w-5 text-muted-foreground hover:text-primary" />

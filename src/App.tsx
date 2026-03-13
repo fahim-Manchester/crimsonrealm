@@ -17,6 +17,7 @@ import Diary from "./pages/Diary";
 import Settings from "./pages/Settings";
 import Codex from "./pages/Codex";
 import NotFound from "./pages/NotFound";
+import GlobalMusicBar from "./components/music/GlobalMusicBar";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,6 +37,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <GlobalMusicBar />
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<Index />} />

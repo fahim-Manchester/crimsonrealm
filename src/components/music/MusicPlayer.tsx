@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { Music, Play, Pause, SkipBack, SkipForward, Volume2, ExternalLink, X, ListMusic, Radio } from "lucide-react";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Music, Play, Pause, SkipBack, SkipForward, Volume2, ExternalLink, X,
+  Radio, HelpCircle, Clock,
+} from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,284 +12,395 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useMusic } from "@/contexts/MusicContext";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useMusic, QueueItem } from "@/contexts/MusicContext";
+import { useSavedMusic } from "@/hooks/useSavedMusic";
+import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 import MusicButton from "./MusicButton";
+import MusicQueuePanel from "./MusicQueuePanel";
+import SavedMusicBrowser from "./SavedMusicBrowser";
+import SaveMusicDialog from "./SaveMusicDialog";
 
 const MusicPlayer = () => {
   const [open, setOpen] = useState(false);
-  const [externalUrl, setExternalUrl] = useState("");
+  const [tempUrl, setTempUrl] = useState("");
+  const [showSavedBrowser, setShowSavedBrowser] = useState<"main" | "downtime" | null>(null);
+  const [showThemePicker, setShowThemePicker] = useState<"main" | "downtime" | null>(null);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveDefaultUrl, setSaveDefaultUrl] = useState("");
+
   const { themeConfig } = useTheme();
+  const { user } = useAuth();
   const {
-    state,
-    settings,
-    themeTracks,
-    play,
-    pause,
-    toggle,
-    playTrack,
-    nextTrack,
-    prevTrack,
-    setQueue,
-    setVolume,
-    updateSettings,
-    setExternalPlaylist,
-    clearExternalPlaylist,
-    playExternal,
-    pauseExternal,
-    setPlayAllMode,
+    state, settings, themeTracks, mainQueue, downtimeQueue,
+    play, pause, toggle, playQueueItem, nextTrack, prevTrack,
+    setMainQueue, setDowntimeQueue,
+    addToMainQueue, addToDowntimeQueue,
+    removeFromMainQueue, removeFromDowntimeQueue,
+    reorderMainQueue, reorderDowntimeQueue,
+    setMusicVolume, setTickingVolume, updateSettings,
+    playTemporary, clearTemporary, pauseTemporary, resumeTemporary,
   } = useMusic();
 
-  const handleLoadThemeTracks = () => {
-    setQueue(themeTracks);
-    setPlayAllMode(true);
-    if (themeTracks.length > 0) {
-      playTrack(themeTracks[0], 0);
+  const { items: savedItems, loading: savedLoading, addItem: saveItem, updateItem: updateSavedItem } = useSavedMusic(user?.id);
+
+  // Add theme tracks to a queue
+  const handleAddThemeTracks = (target: "main" | "downtime") => {
+    const items: QueueItem[] = themeTracks.map(t => ({ id: t.id, title: t.title, url: t.url, isInternal: true }));
+    if (target === "main") setMainQueue([...mainQueue, ...items]);
+    else setDowntimeQueue([...downtimeQueue, ...items]);
+    setShowThemePicker(null);
+  };
+
+  // Add saved item to queue
+  const handleAddSavedToQueue = (item: { id: string; title: string; url: string }, target: "main" | "downtime") => {
+    const queueItem: QueueItem = { id: `saved-${item.id}-${Date.now()}`, title: item.title, url: item.url };
+    if (target === "main") addToMainQueue(queueItem);
+    else addToDowntimeQueue(queueItem);
+  };
+
+  // Temporary playback
+  const handleLoadTemporary = () => {
+    if (tempUrl.trim()) {
+      playTemporary(tempUrl.trim());
     }
   };
 
-  const handleLoadExternalPlaylist = () => {
-    if (externalUrl.trim()) {
-      setExternalPlaylist(externalUrl.trim());
-    }
-  };
-
-  const handleClickTrack = (track: typeof themeTracks[0], index: number) => {
-    setQueue(themeTracks);
-    setPlayAllMode(false);
-    playTrack(track, index);
-  };
+  const isPlaying = state.useTemporary ? state.temporaryIsPlaying : state.isPlaying;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <div>
-          <MusicButton onClick={() => setOpen(true)} />
-        </div>
-      </DialogTrigger>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Music className="h-5 w-5 text-primary" />
-            Music Player
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <div>
+            <MusicButton onClick={() => setOpen(true)} />
+          </div>
+        </DialogTrigger>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Music className="h-5 w-5 text-primary" />
+              Music Player
+            </DialogTitle>
+          </DialogHeader>
 
-        <ScrollArea className="max-h-[70vh] pr-4">
-          <div className="space-y-6">
-            {/* Now Playing */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium text-muted-foreground">Now Playing</h3>
-              <div className="flex items-center justify-between bg-card/50 rounded-lg p-4 border border-border/50">
+          <ScrollArea className="max-h-[75vh] pr-4">
+            <div className="space-y-4">
+              {/* Now Playing Bar */}
+              <div className="flex items-center justify-between bg-card/50 rounded-lg p-3 border border-border/50">
                 <div className="flex-1 min-w-0">
-                  {state.useExternalPlaylist ? (
+                  {state.useTemporary ? (
                     <>
-                      <p className="font-medium truncate flex items-center gap-2">
+                      <p className="font-medium truncate flex items-center gap-2 text-sm">
                         <Radio className="h-4 w-4 text-primary animate-pulse" />
-                        External Playlist
+                        Temporary Playback
                       </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {state.externalIsPlaying ? "Playing in background" : "Paused"}
+                      <p className="text-xs text-muted-foreground">
+                        {state.temporaryIsPlaying ? "Playing" : "Paused"} — queues preserved
                       </p>
                     </>
                   ) : (
                     <>
-                      <p className="font-medium truncate">
+                      <p className="font-medium truncate text-sm">
                         {state.currentTrack?.title || "No track selected"}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {themeConfig.displayName} Soundtrack
+                        {state.activeSource === "downtime" ? "Downtime Queue" : "Main Queue"}
                       </p>
                     </>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  {!state.useExternalPlaylist && (
-                    <Button size="icon" variant="ghost" onClick={prevTrack} disabled={!state.currentTrack}>
+                <div className="flex items-center gap-1">
+                  {!state.useTemporary && (
+                    <Button size="icon" variant="ghost" onClick={prevTrack} disabled={!state.currentTrack} className="h-8 w-8">
                       <SkipBack className="h-4 w-4" />
                     </Button>
                   )}
                   <Button
                     size="icon"
                     variant="default"
+                    className="h-8 w-8"
                     onClick={() => {
-                      if (state.useExternalPlaylist) {
-                        state.externalIsPlaying ? pauseExternal() : playExternal();
+                      if (state.useTemporary) {
+                        state.temporaryIsPlaying ? pauseTemporary() : resumeTemporary();
                       } else {
                         toggle();
                       }
                     }}
-                    disabled={!state.useExternalPlaylist && !state.currentTrack && state.queue.length === 0 && themeTracks.length === 0}
                   >
-                    {(state.useExternalPlaylist ? state.externalIsPlaying : state.isPlaying) ? (
-                      <Pause className="h-4 w-4" />
-                    ) : (
-                      <Play className="h-4 w-4" />
-                    )}
+                    {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                   </Button>
-                  {!state.useExternalPlaylist && (
-                    <Button size="icon" variant="ghost" onClick={nextTrack} disabled={!state.currentTrack}>
+                  {!state.useTemporary && (
+                    <Button size="icon" variant="ghost" onClick={nextTrack} disabled={!state.currentTrack} className="h-8 w-8">
                       <SkipForward className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {state.useTemporary && (
+                    <Button size="icon" variant="ghost" onClick={clearTemporary} className="h-8 w-8">
+                      <X className="h-4 w-4" />
                     </Button>
                   )}
                 </div>
               </div>
 
-              {/* Volume - only for internal tracks */}
-              {!state.useExternalPlaylist && (
-                <div className="flex items-center gap-3">
-                  <Volume2 className="h-4 w-4 text-muted-foreground" />
-                  <Slider
-                    value={[settings.volume * 100]}
-                    onValueChange={([v]) => setVolume(v / 100)}
-                    max={100}
-                    step={1}
-                    className="flex-1"
-                  />
-                  <span className="text-xs text-muted-foreground w-8">{Math.round(settings.volume * 100)}%</span>
-                </div>
-              )}
-            </div>
+              {/* Tabs */}
+              <Tabs defaultValue="main" className="w-full">
+                <TabsList className="w-full grid grid-cols-4">
+                  <TabsTrigger value="main" className="text-xs">Main</TabsTrigger>
+                  <TabsTrigger value="downtime" className="text-xs">Downtime</TabsTrigger>
+                  <TabsTrigger value="temp" className="text-xs">Quick Play</TabsTrigger>
+                  <TabsTrigger value="settings" className="text-xs">Settings</TabsTrigger>
+                </TabsList>
 
-            <Separator />
-
-            {/* Theme Tracks */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  <ListMusic className="h-4 w-4" />
-                  {themeConfig.displayName} Tracks
-                </h3>
-                <Button size="sm" variant="outline" onClick={handleLoadThemeTracks}>
-                  Play All
-                </Button>
-              </div>
-              <div className="space-y-1">
-                {themeTracks.map((track, index) => (
-                  <button
-                    key={track.id}
-                    onClick={() => handleClickTrack(track, index)}
-                    className={cn(
-                      "w-full flex items-center gap-3 p-2 rounded-md text-left transition-colors",
-                      "hover:bg-primary/10",
-                      state.currentTrack?.id === track.id && !state.useExternalPlaylist && "bg-primary/20 text-primary"
-                    )}
-                  >
-                    <div className="w-6 h-6 rounded bg-primary/20 flex items-center justify-center flex-shrink-0">
-                      {state.currentTrack?.id === track.id && state.isPlaying && !state.useExternalPlaylist ? (
-                        <Pause className="h-3 w-3 text-primary" />
-                      ) : (
-                        <Play className="h-3 w-3 text-primary" />
-                      )}
+                {/* Main Queue Tab */}
+                <TabsContent value="main">
+                  {showThemePicker === "main" ? (
+                    <div className="space-y-2">
+                      <h4 className="text-sm text-muted-foreground">Add {themeConfig.displayName} Tracks</h4>
+                      <div className="space-y-1">
+                        {themeTracks.map(track => (
+                          <button
+                            key={track.id}
+                            onClick={() => {
+                              addToMainQueue({ id: track.id, title: track.title, url: track.url, isInternal: true });
+                            }}
+                            className="w-full flex items-center gap-2 p-2 rounded-md text-left hover:bg-primary/10 text-sm"
+                          >
+                            <Music className="h-3 w-3 text-primary" />
+                            {track.title}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleAddThemeTracks("main")} className="text-xs">Add All</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setShowThemePicker(null)} className="text-xs">Back</Button>
+                      </div>
                     </div>
-                    <span className="text-sm truncate">{track.title}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+                  ) : showSavedBrowser === "main" ? (
+                    <SavedMusicBrowser
+                      items={savedItems}
+                      loading={savedLoading}
+                      onSelect={item => handleAddSavedToQueue(item, "main")}
+                      onClose={() => setShowSavedBrowser(null)}
+                    />
+                  ) : (
+                    <MusicQueuePanel
+                      items={mainQueue}
+                      currentId={state.activeSource === "main" ? state.currentTrack?.id : undefined}
+                      isPlaying={state.isPlaying && state.activeSource === "main"}
+                      loopMode={settings.loopMode}
+                      onPlay={(item, idx) => playQueueItem(item, idx, "main")}
+                      onRemove={removeFromMainQueue}
+                      onReorder={reorderMainQueue}
+                      onLoopChange={mode => updateSettings({ loopMode: mode })}
+                      onAddFromLibrary={() => setShowSavedBrowser("main")}
+                      onAddInternal={() => setShowThemePicker("main")}
+                      label="Main Music Queue"
+                    />
+                  )}
+                </TabsContent>
 
-            <Separator />
+                {/* Downtime Queue Tab */}
+                <TabsContent value="downtime">
+                  {!settings.downtimeEnabled ? (
+                    <div className="py-6 text-center space-y-3">
+                      <Clock className="h-8 w-8 text-muted-foreground mx-auto" />
+                      <p className="text-sm text-muted-foreground">
+                        Enable "Downtime music" in Settings to use a separate break queue.
+                      </p>
+                    </div>
+                  ) : showThemePicker === "downtime" ? (
+                    <div className="space-y-2">
+                      <h4 className="text-sm text-muted-foreground">Add {themeConfig.displayName} Tracks</h4>
+                      <div className="space-y-1">
+                        {themeTracks.map(track => (
+                          <button
+                            key={track.id}
+                            onClick={() => {
+                              addToDowntimeQueue({ id: track.id, title: track.title, url: track.url, isInternal: true });
+                            }}
+                            className="w-full flex items-center gap-2 p-2 rounded-md text-left hover:bg-primary/10 text-sm"
+                          >
+                            <Music className="h-3 w-3 text-primary" />
+                            {track.title}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleAddThemeTracks("downtime")} className="text-xs">Add All</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setShowThemePicker(null)} className="text-xs">Back</Button>
+                      </div>
+                    </div>
+                  ) : showSavedBrowser === "downtime" ? (
+                    <SavedMusicBrowser
+                      items={savedItems}
+                      loading={savedLoading}
+                      onSelect={item => handleAddSavedToQueue(item, "downtime")}
+                      onClose={() => setShowSavedBrowser(null)}
+                    />
+                  ) : (
+                    <MusicQueuePanel
+                      items={downtimeQueue}
+                      currentId={state.activeSource === "downtime" ? state.currentTrack?.id : undefined}
+                      isPlaying={state.isPlaying && state.activeSource === "downtime"}
+                      loopMode={settings.downtimeLoopMode}
+                      onPlay={(item, idx) => playQueueItem(item, idx, "downtime")}
+                      onRemove={removeFromDowntimeQueue}
+                      onReorder={reorderDowntimeQueue}
+                      onLoopChange={mode => updateSettings({ downtimeLoopMode: mode })}
+                      onAddFromLibrary={() => setShowSavedBrowser("downtime")}
+                      onAddInternal={() => setShowThemePicker("downtime")}
+                      label="Downtime Queue"
+                    />
+                  )}
+                </TabsContent>
 
-            {/* External Playlist */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <ExternalLink className="h-4 w-4" />
-                External Playlist
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Paste a link from Spotify, YouTube, or SoundCloud. Audio continues when this dialog is closed.
-              </p>
-              <div className="flex gap-2">
-                <Input
-                  value={externalUrl}
-                  onChange={(e) => setExternalUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="flex-1"
-                />
-                <Button onClick={handleLoadExternalPlaylist} size="sm">
-                  Load
-                </Button>
-              </div>
-              
-              {state.useExternalPlaylist && (
-                <div className="flex items-center justify-between bg-primary/5 rounded-lg p-3 border border-primary/20">
-                  <div className="flex items-center gap-2">
-                    <Radio className="h-4 w-4 text-primary animate-pulse" />
-                    <span className="text-sm text-primary font-medium">
-                      {state.externalIsPlaying ? "Playing in background" : "Paused"}
-                    </span>
+                {/* Quick Play / Temporary Tab */}
+                <TabsContent value="temp">
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      Paste a link to play temporarily. Your queues won't be affected.
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        value={tempUrl}
+                        onChange={e => setTempUrl(e.target.value)}
+                        placeholder="YouTube, Spotify, SoundCloud..."
+                        className="flex-1"
+                      />
+                      <Button onClick={handleLoadTemporary} size="sm">Play</Button>
+                    </div>
+                    {tempUrl.trim() && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => { setSaveDefaultUrl(tempUrl.trim()); setShowSaveDialog(true); }}
+                        className="text-xs"
+                      >
+                        Save to Library
+                      </Button>
+                    )}
+                    {state.useTemporary && (
+                      <div className="flex items-center justify-between bg-primary/5 rounded-lg p-3 border border-primary/20">
+                        <div className="flex items-center gap-2">
+                          <Radio className="h-4 w-4 text-primary animate-pulse" />
+                          <span className="text-sm text-primary font-medium">
+                            {state.temporaryIsPlaying ? "Playing" : "Paused"}
+                          </span>
+                        </div>
+                        <Button size="sm" variant="ghost" onClick={clearTemporary}>
+                          <X className="h-3 w-3 mr-1" /> Clear
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                  <Button size="sm" variant="ghost" onClick={clearExternalPlaylist}>
-                    <X className="h-3 w-3 mr-1" />
-                    Clear
-                  </Button>
-                </div>
-              )}
+                </TabsContent>
+
+                {/* Settings Tab */}
+                <TabsContent value="settings">
+                  <div className="space-y-4">
+                    {/* Music Volume */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Volume2 className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">Music Volume</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Slider
+                          value={[settings.musicVolume * 100]}
+                          onValueChange={([v]) => setMusicVolume(v / 100)}
+                          max={100}
+                          step={1}
+                          className="flex-1"
+                        />
+                        <span className="text-xs text-muted-foreground w-8">{Math.round(settings.musicVolume * 100)}%</span>
+                      </div>
+                    </div>
+
+                    {/* Ticking Volume */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">Clock Ticking Volume</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Slider
+                          value={[settings.tickingVolume * 100]}
+                          onValueChange={([v]) => setTickingVolume(v / 100)}
+                          max={100}
+                          step={1}
+                          className="flex-1"
+                        />
+                        <span className="text-xs text-muted-foreground w-8">{Math.round(settings.tickingVolume * 100)}%</span>
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    {/* Toggles */}
+                    <div className="space-y-3">
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm">Clock ticking sounds</span>
+                        <Switch
+                          checked={settings.clockTickingEnabled}
+                          onCheckedChange={checked => updateSettings({ clockTickingEnabled: checked })}
+                        />
+                      </label>
+
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm">Only play music when timer is on</span>
+                        <Switch
+                          checked={settings.playOnlyWhenTimerRunning}
+                          onCheckedChange={checked => updateSettings({ playOnlyWhenTimerRunning: checked })}
+                        />
+                      </label>
+
+                      <label className="flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm">Add downtime music list</span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="max-w-[240px]">
+                              <p className="text-xs">
+                                Set separate music for breaks or downtime, so both work mode and break mode feel active and intentional.
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <Switch
+                          checked={settings.downtimeEnabled}
+                          onCheckedChange={checked => updateSettings({ downtimeEnabled: checked })}
+                        />
+                      </label>
+
+                      <label className="flex items-center justify-between">
+                        <span className="text-sm">Music plays outside of campaigns</span>
+                        <Switch
+                          checked={settings.playOutsideCampaigns}
+                          onCheckedChange={checked => updateSettings({ playOutsideCampaigns: checked })}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
 
-            <Separator />
-
-            {/* Settings */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium text-muted-foreground">Playback Settings</h3>
-              
-              <div className="space-y-3">
-                <label className="flex items-center justify-between">
-                  <span className="text-sm">Music plays only when timer is running</span>
-                  <Switch
-                    checked={settings.playOnlyWhenTimerRunning}
-                    onCheckedChange={(checked) => {
-                      updateSettings({ 
-                        playOnlyWhenTimerRunning: checked,
-                        playOnlyWhenTimerPaused: checked ? false : settings.playOnlyWhenTimerPaused 
-                      });
-                    }}
-                  />
-                </label>
-
-                <label className="flex items-center justify-between">
-                  <span className="text-sm">Music plays only when timer is paused</span>
-                  <Switch
-                    checked={settings.playOnlyWhenTimerPaused}
-                    onCheckedChange={(checked) => {
-                      updateSettings({ 
-                        playOnlyWhenTimerPaused: checked,
-                        playOnlyWhenTimerRunning: checked ? false : settings.playOnlyWhenTimerRunning 
-                      });
-                    }}
-                  />
-                </label>
-
-                <label className="flex items-center justify-between">
-                  <span className="text-sm">Music plays outside of campaigns</span>
-                  <Switch
-                    checked={settings.playOutsideCampaigns}
-                    onCheckedChange={(checked) => updateSettings({ playOutsideCampaigns: checked })}
-                  />
-                </label>
-
-                <label className="flex items-center justify-between">
-                  <span className="text-sm">Clock ticking sounds</span>
-                  <Switch
-                    checked={settings.clockTickingEnabled}
-                    onCheckedChange={(checked) => updateSettings({ clockTickingEnabled: checked })}
-                  />
-                </label>
-
-                <label className="flex items-center justify-between">
-                  <span className="text-sm">Loop track</span>
-                  <Switch
-                    checked={settings.loopTrack}
-                    onCheckedChange={(checked) => updateSettings({ loopTrack: checked })}
-                  />
-                </label>
-              </div>
-            </div>
-          </div>
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
+      <SaveMusicDialog
+        open={showSaveDialog}
+        onOpenChange={setShowSaveDialog}
+        onSave={saveItem}
+        defaultUrl={saveDefaultUrl}
+      />
+    </>
   );
 };
 

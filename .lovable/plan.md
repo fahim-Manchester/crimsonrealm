@@ -1,149 +1,78 @@
 
+# Fix: Mobile PWA Layout -- Cramped UI and Overflow Issues
 
-# Mega Music-Audio System Upgrade
+## Problem
 
-## Scope Summary
+When running as a PWA on mobile (standalone mode), several screens have layout issues:
 
-This is a large-scale overhaul touching the database, context, UI, and multiple pages. The plan covers all 10 requirements.
+1. **Campaign Session page (screenshot 4)**: The 4 clocks in a row (`grid-cols-4`) are too cramped on small screens -- labels like "CAMPAIGN TOTAL" and "CURRENT TASK" overflow their boxes, and time values like "01:17:34" get cut off.
 
-## Database Changes
+2. **Campaign Cards (screenshots 2-3)**: The action buttons (edit, pause, play, complete, delete, refresh) all sit in one row next to the campaign title, causing the title to wrap excessively and buttons to feel cramped.
 
-### New table: `saved_music`
-Stores user's permanent saved external tracks/playlists.
+3. **Quest Items (screenshot 4)**: Items like "Dishes POP..." and "Coo..." are truncated too aggressively because the row has too many inline elements (grip + icon + bookmark + name + badge + time + edit button + status).
 
-```sql
-CREATE TABLE public.saved_music (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  title varchar NOT NULL,
-  url varchar NOT NULL,
-  type varchar NOT NULL DEFAULT 'track', -- 'track' or 'playlist'
-  source_platform varchar, -- 'youtube', 'spotify', 'soundcloud', or null
-  description varchar,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-ALTER TABLE public.saved_music ENABLE ROW LEVEL SECURITY;
--- Standard CRUD policies for own rows
-```
+4. **Home page header (screenshot 1)**: "REALM", settings icon, install checkmark, and "Leave Realm" button are tight but functional -- minor improvement possible.
 
-### New table: `music_preferences`
-Stores per-user music settings and queues as JSON (single row per user).
+## Solution
 
-```sql
-CREATE TABLE public.music_preferences (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL UNIQUE,
-  settings jsonb NOT NULL DEFAULT '{}',
-  main_queue jsonb NOT NULL DEFAULT '[]',
-  downtime_queue jsonb NOT NULL DEFAULT '[]',
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-ALTER TABLE public.music_preferences ENABLE ROW LEVEL SECURITY;
--- Standard CRUD policies for own rows
-```
+### 1. SessionClock -- Responsive sizing for small screens
 
-## Architecture Overview
+**File: `src/components/campaigns/SessionClock.tsx`**
 
-```text
-┌─────────────────────────────────────────────────┐
-│ MusicProvider (wraps entire app in main.tsx)     │
-│                                                 │
-│  State:                                         │
-│  - settings (volume, ticking vol, loop, etc.)   │
-│  - mainQueue[] (persistent work queue)           │
-│  - downtimeQueue[] (persistent break queue)      │
-│  - temporaryPlayback (non-saved direct play)     │
-│  - activeSource: 'main'|'downtime'|'temporary'   │
-│                                                 │
-│  Persistence: Supabase music_preferences table   │
-│  (debounced writes, localStorage fallback)       │
-│                                                 │
-│  Saved Music DB: Supabase saved_music table      │
-└─────────────────────────────────────────────────┘
+- Reduce padding on mobile: `p-2 md:p-6` instead of `p-4 md:p-6`
+- Reduce time font size on mobile: `text-lg md:text-4xl` instead of `text-2xl md:text-4xl`
+- Reduce label font size: `text-[10px] md:text-sm`
 
-┌──────────────────────────┐
-│ Global Floating Player   │ ← Fixed position, all pages
-│ (MusicButton + controls) │
-└──────────────────────────┘
-```
+### 2. Campaign Session Clocks Grid -- 2x2 on mobile, 4 columns on desktop
 
-## File Changes
+**File: `src/pages/CampaignSession.tsx`**
 
-### New Files
+- Change `grid-cols-4` to `grid-cols-2 md:grid-cols-4` so the 4 clocks arrange as a 2x2 grid on mobile
+- Reduce section padding on mobile
 
-| File | Purpose |
+### 3. Campaign Session Header -- Wrap buttons on mobile
+
+**File: `src/pages/CampaignSession.tsx`**
+
+- Allow the header buttons ("New Session", "End Session") to wrap or stack on small screens using `flex-wrap`
+- Use shorter button text on mobile (icon-only or abbreviated)
+
+### 4. Campaign Card Action Buttons -- Wrap on mobile
+
+**File: `src/components/campaigns/CampaignCard.tsx`**
+
+- Change the action buttons container from a single row to `flex-wrap` so buttons wrap to a second line on small screens instead of cramming next to the title
+
+### 5. SortableTaskItem -- Better mobile layout
+
+**File: `src/components/campaigns/SortableTaskItem.tsx`**
+
+- Reduce gap and padding on mobile: `gap-2 p-2 md:gap-3 md:p-3`
+- Allow the task name to use `min-w-0` to ensure proper truncation
+- Hide the "POP-UP" / "HIDDEN" badge text on very small screens (keep just the icon)
+- Make the time display more compact on mobile
+
+### 6. Campaigns Page -- Reduce padding on mobile
+
+**File: `src/pages/Campaigns.tsx`**
+
+- Reduce horizontal padding: `px-4 md:px-12` instead of `px-6 md:px-12`
+- Reduce hero section margins on mobile
+
+---
+
+## Technical Changes Summary
+
+| File | Changes |
 |------|---------|
-| `src/hooks/useSavedMusic.ts` | CRUD hook for `saved_music` table |
-| `src/hooks/useMusicPreferences.ts` | Load/save `music_preferences` from Supabase with debounce + localStorage fallback |
-| `src/components/music/MusicQueuePanel.tsx` | Drag-and-drop queue UI (shared between main & downtime queues) |
-| `src/components/music/SavedMusicBrowser.tsx` | Browse/select from saved music to add to queues |
-| `src/components/music/SaveMusicDialog.tsx` | Dialog to save an external URL with title, type, description |
-| `src/components/music/GlobalMusicBar.tsx` | Fixed-position floating music controls visible on all pages |
+| `src/components/campaigns/SessionClock.tsx` | Smaller padding, font sizes on mobile |
+| `src/pages/CampaignSession.tsx` | 2x2 clock grid on mobile, wrap header buttons, reduce padding |
+| `src/components/campaigns/CampaignCard.tsx` | `flex-wrap` on action buttons |
+| `src/components/campaigns/SortableTaskItem.tsx` | Tighter mobile spacing, hide badge text on small screens |
+| `src/pages/Campaigns.tsx` | Reduce mobile padding |
 
-### Modified Files
+---
 
-| File | Change |
-|------|--------|
-| `src/contexts/MusicContext.tsx` | Major rewrite: add mainQueue, downtimeQueue, tickingVolume, downtimeEnabled settings; queue switching logic based on timer state; separate temporary playback from saved queues; load/save via `useMusicPreferences`; expose saved music CRUD |
-| `src/components/music/MusicPlayer.tsx` | Redesigned dialog with tabs: Now Playing, Main Queue, Downtime Queue, Saved Music, Settings. Each queue has drag-drop reorder, add from saved/internal/external, remove, loop options |
-| `src/components/music/MusicButton.tsx` | Minor: also show indicator for downtime playing |
-| `src/App.tsx` | Add `GlobalMusicBar` component (rendered inside routes, after auth check) |
-| `src/pages/Resources.tsx` | Add special "Music Database" section that renders saved_music items; protect from "Dismantle All"; show confirmation on manual delete |
-| `src/hooks/useCleaveDismantle.ts` | `dismantleAllGroups` must skip the music database section (no entry_groups change needed since music DB is its own table, but we add UI protection) |
-| `src/pages/Home.tsx` | Remove per-page MusicPlayer (now global) |
-| `src/pages/CampaignSession.tsx` | Remove per-page MusicPlayer (now global) |
-| `src/components/layout/PageLayout.tsx` | Remove per-page MusicPlayer (now global) |
-| `src/pages/Campaigns.tsx` | No MusicPlayer removal needed (wasn't there) |
+## Key Principle
 
-## Key Behaviors
-
-### Queue System
-- **Main Queue**: Items from internal tracks + saved music. Plays during work/timer-on. Drag-and-drop reorder. Loop options: loop queue, loop one, no loop.
-- **Downtime Queue**: Same capabilities. Plays during breaks/timer-off when both checkboxes are ON.
-- **Temporary Playback**: Paste-and-play external URL without saving. Does NOT touch queues.
-
-### Timer Integration (replaces current `playOnlyWhenTimerRunning` / `playOnlyWhenTimerPaused`)
-- "Only play music when timer is on" checkbox (existing, renamed)
-- "Add downtime music list" checkbox (new) with tooltip
-- When both ON: timer running → main queue; timer paused → downtime queue (crossfade between them)
-- When only timer checkbox ON: timer running → main queue; timer paused → silence
-- When neither ON: free play from whichever queue/source user chooses
-
-### Settings Model (saved per account)
-```typescript
-interface MusicSettings {
-  musicVolume: number;           // 0-1
-  tickingVolume: number;         // 0-1 (NEW - separate from music)
-  clockTickingEnabled: boolean;
-  loopMode: 'none' | 'queue' | 'one';
-  downtimeLoopMode: 'none' | 'queue' | 'one';
-  playOnlyWhenTimerRunning: boolean;
-  downtimeEnabled: boolean;      // NEW
-  playOutsideCampaigns: boolean;
-}
-```
-
-### Clock Ticking Volume
-- Separate slider in settings section
-- Ticking engine gain node scaled by `tickingVolume` instead of hardcoded 0.12
-- Saved per account
-
-### Saved Music in Chronicles
-- Rendered as a visually distinct section at the bottom of the Resources/Chronicles page
-- Title adapts to theme (e.g. "Sound Archives" for gothic, "Audio Intel" for neon)
-- Add, edit, delete individual items
-- "Dismantle All" in Chronicles skips this section entirely
-- Manual deletion of the entire section shows a confirmation warning
-- Items from saved music can be added to either queue from the music player
-
-### Global Music Access
-- Remove `<MusicPlayer />` from individual page headers (Home, PageLayout, CampaignSession)
-- Add a `<GlobalMusicBar />` component rendered in `App.tsx` that shows a small fixed-position music button/mini-player in the bottom-right corner on all authenticated pages
-- Music continues uninterrupted across page navigation (already works since MusicProvider wraps the app)
-
-### Account-Based Persistence
-- On login: fetch `music_preferences` row → hydrate MusicContext state
-- On setting/queue change: debounced (2s) write to `music_preferences`
-- localStorage used as immediate cache and offline fallback
-- On first login with no DB row: create default row
-
+All changes use responsive Tailwind classes (e.g., `text-lg md:text-4xl`, `grid-cols-2 md:grid-cols-4`) so desktop remains unchanged while mobile gets a properly spaced layout.
