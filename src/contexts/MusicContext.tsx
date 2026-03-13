@@ -326,12 +326,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const fadeInYT = useCallback(() => {
     cancelYTFade();
     setYouTubeVolume(0);
+    const targetYT = Math.max(0, Math.min(100, Math.round(targetVolumeRef.current * 100)));
     let cur = 0;
-    const step = 100 / FADE_STEPS;
+    const step = targetYT / FADE_STEPS;
     youtubeFadeIntervalRef.current = setInterval(() => {
       cur++;
-      setYouTubeVolume(Math.min(100, step * cur));
-      if (cur >= FADE_STEPS) { cancelYTFade(); setYouTubeVolume(100); }
+      setYouTubeVolume(Math.min(targetYT, Math.round(step * cur)));
+      if (cur >= FADE_STEPS) { cancelYTFade(); setYouTubeVolume(targetYT); }
     }, FADE_INTERVAL);
   }, [cancelYTFade, setYouTubeVolume]);
 
@@ -343,18 +344,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     iframeRef.current.src = embedUrl;
 
     if (isYouTubeUrl(url)) {
-      const ytVolume = Math.max(0, Math.min(100, Math.round(settings.musicVolume * 100)));
+      // Start at volume 0 then fade in
       const ensurePlay = () => {
         if (!iframeRef.current?.contentWindow) return;
         iframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
         iframeRef.current.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*');
-        iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [ytVolume] }), "*");
+        setYouTubeVolume(0);
       };
 
       setTimeout(ensurePlay, 250);
-      setTimeout(ensurePlay, 1000);
+      setTimeout(() => { ensurePlay(); fadeInYT(); }, 1000);
     }
-  }, [cancelYTFade, isYouTubeUrl, settings.musicVolume]);
+  }, [cancelYTFade, isYouTubeUrl, setYouTubeVolume, fadeInYT]);
 
   // ---- Volume sync ----
   useEffect(() => {
@@ -494,6 +495,20 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [state.temporaryUrl, isYouTubeUrl, fadeOutYT]);
 
   // ---- Campaign timer state ----
+  // Helper: fade-pause whatever is currently playing (internal or external)
+  const fadeAndPauseCurrent = useCallback(() => {
+    if (state.currentTrackIsExternal && state.currentTrack && isYouTubeUrl(state.currentTrack.url)) {
+      fadeOutYT(() => {
+        iframeRef.current?.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+      });
+    } else if (state.currentTrackIsExternal && iframeRef.current) {
+      iframeRef.current.src = "";
+    } else {
+      fadeOut(() => { audioRef.current?.pause(); });
+    }
+    setState(s => ({ ...s, isPlaying: false }));
+  }, [state.currentTrackIsExternal, state.currentTrack, isYouTubeUrl, fadeOutYT, fadeOut]);
+
   useEffect(() => {
     const { isRunning, isInCampaign } = campaignState;
 
@@ -512,15 +527,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (isRunning) {
         // Switch to main queue
         if (state.activeSource !== "main") {
-          fadeOut(() => { audioRef.current?.pause(); });
+          fadeAndPauseCurrent();
           setState(s => ({ ...s, activeSource: "main", isPlaying: false }));
-          // Auto-play main queue
           if (mainQueue.length > 0) {
             setTimeout(() => {
               const idx = state.currentTrack && mainQueue.some(q => q.id === state.currentTrack!.id) 
                 ? mainQueue.findIndex(q => q.id === state.currentTrack!.id) : 0;
               playQueueAtIndex(Math.max(0, idx));
-            }, 100);
+            }, FADE_DURATION + 100);
           }
         } else if (!state.isPlaying && mainQueue.length > 0) {
           playQueueAtIndex(state.currentTrackIndex >= 0 ? state.currentTrackIndex : 0);
@@ -528,10 +542,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         // Switch to downtime queue
         if (state.activeSource !== "downtime") {
-          fadeOut(() => { audioRef.current?.pause(); });
+          fadeAndPauseCurrent();
           setState(s => ({ ...s, activeSource: "downtime", isPlaying: false }));
           if (downtimeQueue.length > 0) {
-            setTimeout(() => playQueueAtIndex(0), 100);
+            setTimeout(() => playQueueAtIndex(0), FADE_DURATION + 100);
           }
         } else if (!state.isPlaying && downtimeQueue.length > 0) {
           playQueueAtIndex(state.currentTrackIndex >= 0 ? state.currentTrackIndex : 0);
@@ -542,17 +556,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (isRunning && isInCampaign && !state.isPlaying && mainQueue.length > 0) {
         playQueueAtIndex(state.currentTrackIndex >= 0 ? state.currentTrackIndex : 0);
       } else if (!isRunning && state.isPlaying) {
-        fadeOut(() => { audioRef.current?.pause(); });
-        setState(s => ({ ...s, isPlaying: false }));
+        fadeAndPauseCurrent();
       }
     }
 
     if (!settings.playOutsideCampaigns && !isInCampaign && state.isPlaying) {
-      fadeOut(() => { audioRef.current?.pause(); });
-      setState(s => ({ ...s, isPlaying: false }));
+      fadeAndPauseCurrent();
     }
   }, [campaignState, settings.playOnlyWhenTimerRunning, settings.downtimeEnabled, settings.playOutsideCampaigns, settings.clockTickingEnabled]);
-
   // ---- Public API ----
   const play = useCallback(() => {
     if (state.useTemporary) {
@@ -568,10 +579,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Resume external track
     if (state.currentTrackIsExternal && state.currentTrack) {
       if (isYouTubeUrl(state.currentTrack.url) && iframeRef.current?.contentWindow && iframeRef.current.src) {
+        // Fade in YouTube: start muted, unmute at 0, then ramp up
         cancelYTFade();
+        setYouTubeVolume(0);
         iframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
         iframeRef.current.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*');
-        setYouTubeVolume(Math.max(0, Math.min(100, Math.round(settings.musicVolume * 100))));
+        fadeInYT();
       } else {
         startExternalPlayback(state.currentTrack.url);
       }
@@ -592,14 +605,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setState(s => ({ ...s, activeSource: "main" }));
       setTimeout(() => playQueueAtIndex(0), 0);
     }
-  }, [state, themeTracks, playQueueAtIndex, fadeIn, playTemporaryExternal, getActiveQueue, startExternalPlayback, isYouTubeUrl, cancelYTFade, setYouTubeVolume, settings.musicVolume]);
+  }, [state, themeTracks, playQueueAtIndex, fadeIn, fadeInYT, playTemporaryExternal, getActiveQueue, startExternalPlayback, isYouTubeUrl, cancelYTFade, setYouTubeVolume, settings.musicVolume]);
 
   const pause = useCallback(() => {
     if (state.useTemporary) { pauseTemporaryExternal(); return; }
     if (state.currentTrackIsExternal) {
       if (state.currentTrack && isYouTubeUrl(state.currentTrack.url)) {
-        cancelYTFade();
-        iframeRef.current?.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+        // Fade out YouTube then pause
+        fadeOutYT(() => {
+          iframeRef.current?.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+        });
       } else if (iframeRef.current) {
         iframeRef.current.src = "";
       }
@@ -608,7 +623,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     fadeOut(() => { audioRef.current?.pause(); });
     setState(s => ({ ...s, isPlaying: false }));
-  }, [state.useTemporary, state.currentTrackIsExternal, state.currentTrack, pauseTemporaryExternal, fadeOut, isYouTubeUrl, cancelYTFade]);
+  }, [state.useTemporary, state.currentTrackIsExternal, state.currentTrack, pauseTemporaryExternal, fadeOut, fadeOutYT, isYouTubeUrl]);
 
   const toggle = useCallback(() => {
     if (state.useTemporary) {
