@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import PageLayout from "@/components/layout/PageLayout";
-import { Settings as SettingsIcon, Lock, Unlock, Phone, MessageSquare } from "lucide-react";
+import { Settings as SettingsIcon, Lock, Unlock, Phone, MessageSquare, Info } from "lucide-react";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -132,6 +133,14 @@ const Settings = () => {
               </div>
             ) : (
               <div className="space-y-6">
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>SMS Reminder Access</AlertTitle>
+                  <AlertDescription>
+                    Phone numbers can be linked to your account, but SMS reminders are currently limited to approved demo numbers. If you would like to test the SMS reminder feature, please contact the developer so your number can be verified in Twilio for the demo build.
+                  </AlertDescription>
+                </Alert>
+
                 {/* Phone Number */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
