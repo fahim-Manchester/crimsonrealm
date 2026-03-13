@@ -780,16 +780,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }}
     >
       {children}
-      {currentEmbedUrl && (
-        <iframe
-          ref={iframeRef}
-          src={currentEmbedUrl}
-          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-          style={{ position: "fixed", top: -9999, left: -9999, width: 1, height: 1, border: "none", pointerEvents: "none" }}
-          tabIndex={-1}
-          aria-hidden="true"
-        />
-      )}
+      {/* Always render iframe for external playback (queue or temporary) */}
+      <iframe
+        ref={iframeRef}
+        src={currentEmbedUrl || ""}
+        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+        style={{ position: "fixed", top: -9999, left: -9999, width: 1, height: 1, border: "none", pointerEvents: "none" }}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
     </MusicContext.Provider>
   );
 };
