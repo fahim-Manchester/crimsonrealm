@@ -31,6 +31,8 @@ interface MusicState {
   currentTrack: QueueItem | null;
   currentTrackIndex: number;
   activeSource: "main" | "downtime" | "temporary";
+  // Whether the current queue track uses iframe (external) vs audio element (internal)
+  currentTrackIsExternal: boolean;
   // External/temporary playback
   temporaryUrl: string;
   temporaryIsPlaying: boolean;
