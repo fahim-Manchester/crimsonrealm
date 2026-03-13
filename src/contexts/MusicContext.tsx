@@ -730,8 +730,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setCampaignState({ isRunning, isInCampaign });
   }, []);
 
-  // Embed URL for temporary playback
-  const currentEmbedUrl = state.useTemporary && state.temporaryUrl ? getEmbedUrl(state.temporaryUrl) : null;
+  // Embed URL — for temporary external playback OR queue external tracks
+  const currentEmbedUrl = state.useTemporary && state.temporaryUrl
+    ? getEmbedUrl(state.temporaryUrl)
+    : null;
+  // Note: queue external tracks set iframe.src directly in playQueueAtIndex/playQueueItem,
+  // so we always render the iframe element (hidden).
 
   return (
     <MusicContext.Provider
