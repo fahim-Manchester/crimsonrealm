@@ -689,9 +689,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setTickingVolume,
         updateSettings: updateSettingsFn,
         playTemporary,
+        playTemporaryInternal,
         clearTemporary,
         pauseTemporary: pauseTemporaryExternal,
-        resumeTemporary: () => playTemporaryExternal(state.temporaryUrl),
+        resumeTemporary: () => {
+          if (temporaryInternalQueue.length > 0 && audioRef.current) {
+            audioRef.current.play().catch(() => {});
+            fadeIn();
+            setState(s => ({ ...s, temporaryIsPlaying: true }));
+          } else {
+            playTemporaryExternal(state.temporaryUrl);
+          }
+        },
         notifyCampaignTimerState,
         getEmbedUrl,
       }}

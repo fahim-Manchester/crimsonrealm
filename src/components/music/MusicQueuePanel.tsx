@@ -111,7 +111,7 @@ const MusicQueuePanel = ({
         )}
       </ScrollArea>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <Button size="sm" variant="outline" onClick={onAddInternal} className="text-xs flex-1">
           <Plus className="h-3 w-3 mr-1" />
           Theme Tracks
@@ -120,6 +120,12 @@ const MusicQueuePanel = ({
           <Plus className="h-3 w-3 mr-1" />
           From Library
         </Button>
+        {onAddNew && (
+          <Button size="sm" variant="outline" onClick={onAddNew} className="text-xs flex-1">
+            <Plus className="h-3 w-3 mr-1" />
+            Add New
+          </Button>
+        )}
       </div>
     </div>
   );
