@@ -789,7 +789,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       {/* Always render iframe for external playback (queue or temporary) */}
       <iframe
         ref={iframeRef}
-        src={currentEmbedUrl || ""}
+        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
         allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
         style={{ position: "fixed", top: -9999, left: -9999, width: 1, height: 1, border: "none", pointerEvents: "none" }}
         tabIndex={-1}
