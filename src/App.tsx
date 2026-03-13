@@ -16,6 +16,7 @@ import CampaignSession from "./pages/CampaignSession";
 import Diary from "./pages/Diary";
 import Settings from "./pages/Settings";
 import Codex from "./pages/Codex";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import GlobalMusicBar from "./components/music/GlobalMusicBar";
 
