@@ -42,6 +42,7 @@ const MusicQueuePanel = ({
   onLoopChange,
   onAddFromLibrary,
   onAddInternal,
+  onAddNew,
   label,
 }: MusicQueuePanelProps) => {
   const cycleLoop = () => {
