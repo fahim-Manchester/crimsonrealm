@@ -346,6 +346,7 @@ const CampaignSession = () => {
               onUpdateSettings={timerMode.updateSettings}
               onUpdateChess={timerMode.updateChessSettings}
               onUpdatePomodoro={timerMode.updatePomodoroSettings}
+              onUpdateUltradian={timerMode.updateUltradianSettings}
             />
             <TaskQueuePanel
               items={items}
