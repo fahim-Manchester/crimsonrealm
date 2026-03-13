@@ -1,78 +1,44 @@
 
-# Fix: Mobile PWA Layout -- Cramped UI and Overflow Issues
 
-## Problem
+# Upload Local Audio Files to Music Library
 
-When running as a PWA on mobile (standalone mode), several screens have layout issues:
+Add the ability to upload MP3/audio files from the user's device, stored in a cloud storage bucket. Uploaded files get a public URL and are saved to the `saved_music` table just like external links, making them playable anywhere in the music system.
 
-1. **Campaign Session page (screenshot 4)**: The 4 clocks in a row (`grid-cols-4`) are too cramped on small screens -- labels like "CAMPAIGN TOTAL" and "CURRENT TASK" overflow their boxes, and time values like "01:17:34" get cut off.
+## Database Changes
 
-2. **Campaign Cards (screenshots 2-3)**: The action buttons (edit, pause, play, complete, delete, refresh) all sit in one row next to the campaign title, causing the title to wrap excessively and buttons to feel cramped.
+Create a public storage bucket `music-uploads` with RLS policies allowing authenticated users to upload/read/delete their own files (files stored under `{user_id}/` prefix).
 
-3. **Quest Items (screenshot 4)**: Items like "Dishes POP..." and "Coo..." are truncated too aggressively because the row has too many inline elements (grip + icon + bookmark + name + badge + time + edit button + status).
+## File Changes
 
-4. **Home page header (screenshot 1)**: "REALM", settings icon, install checkmark, and "Leave Realm" button are tight but functional -- minor improvement possible.
+### `src/components/music/SaveMusicDialog.tsx`
+- Add an "Upload File" tab/toggle alongside the URL input
+- File input accepting `audio/*` (.mp3, .wav, .ogg, .m4a, .flac)
+- On file select: upload to `music-uploads/{userId}/{filename}`, get public URL, auto-fill the URL field
+- Show upload progress indicator
+- Max file size: 20MB with client-side validation
+- Auto-detect title from filename if title field is empty
 
-## Solution
+### `src/hooks/useSavedMusic.ts`
+- Add `uploadAndSave(file: File, title: string, description?: string)` method
+- Handles storage upload, gets public URL, inserts into `saved_music` with `source_platform: "upload"`
+- Returns the saved item
 
-### 1. SessionClock -- Responsive sizing for small screens
+### Migration SQL
+```sql
+INSERT INTO storage.buckets (id, name, public) VALUES ('music-uploads', 'music-uploads', true);
 
-**File: `src/components/campaigns/SessionClock.tsx`**
+CREATE POLICY "Users can upload their own music"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'music-uploads' AND (storage.foldername(name))[1] = auth.uid()::text);
 
-- Reduce padding on mobile: `p-2 md:p-6` instead of `p-4 md:p-6`
-- Reduce time font size on mobile: `text-lg md:text-4xl` instead of `text-2xl md:text-4xl`
-- Reduce label font size: `text-[10px] md:text-sm`
+CREATE POLICY "Anyone can read music uploads"
+ON storage.objects FOR SELECT TO public
+USING (bucket_id = 'music-uploads');
 
-### 2. Campaign Session Clocks Grid -- 2x2 on mobile, 4 columns on desktop
+CREATE POLICY "Users can delete their own music"
+ON storage.objects FOR DELETE TO authenticated
+USING (bucket_id = 'music-uploads' AND (storage.foldername(name))[1] = auth.uid()::text);
+```
 
-**File: `src/pages/CampaignSession.tsx`**
+Storage cost is minimal -- files are stored in the existing cloud infrastructure with generous free tier limits.
 
-- Change `grid-cols-4` to `grid-cols-2 md:grid-cols-4` so the 4 clocks arrange as a 2x2 grid on mobile
-- Reduce section padding on mobile
-
-### 3. Campaign Session Header -- Wrap buttons on mobile
-
-**File: `src/pages/CampaignSession.tsx`**
-
-- Allow the header buttons ("New Session", "End Session") to wrap or stack on small screens using `flex-wrap`
-- Use shorter button text on mobile (icon-only or abbreviated)
-
-### 4. Campaign Card Action Buttons -- Wrap on mobile
-
-**File: `src/components/campaigns/CampaignCard.tsx`**
-
-- Change the action buttons container from a single row to `flex-wrap` so buttons wrap to a second line on small screens instead of cramming next to the title
-
-### 5. SortableTaskItem -- Better mobile layout
-
-**File: `src/components/campaigns/SortableTaskItem.tsx`**
-
-- Reduce gap and padding on mobile: `gap-2 p-2 md:gap-3 md:p-3`
-- Allow the task name to use `min-w-0` to ensure proper truncation
-- Hide the "POP-UP" / "HIDDEN" badge text on very small screens (keep just the icon)
-- Make the time display more compact on mobile
-
-### 6. Campaigns Page -- Reduce padding on mobile
-
-**File: `src/pages/Campaigns.tsx`**
-
-- Reduce horizontal padding: `px-4 md:px-12` instead of `px-6 md:px-12`
-- Reduce hero section margins on mobile
-
----
-
-## Technical Changes Summary
-
-| File | Changes |
-|------|---------|
-| `src/components/campaigns/SessionClock.tsx` | Smaller padding, font sizes on mobile |
-| `src/pages/CampaignSession.tsx` | 2x2 clock grid on mobile, wrap header buttons, reduce padding |
-| `src/components/campaigns/CampaignCard.tsx` | `flex-wrap` on action buttons |
-| `src/components/campaigns/SortableTaskItem.tsx` | Tighter mobile spacing, hide badge text on small screens |
-| `src/pages/Campaigns.tsx` | Reduce mobile padding |
-
----
-
-## Key Principle
-
-All changes use responsive Tailwind classes (e.g., `text-lg md:text-4xl`, `grid-cols-2 md:grid-cols-4`) so desktop remains unchanged while mobile gets a properly spaced layout.
