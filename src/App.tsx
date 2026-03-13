@@ -43,6 +43,7 @@ const App = () => (
           {/* Public routes */}
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           
           {/* Protected routes - wrapped with RequireAuth */}
           <Route path="/home" element={<RequireAuth><Home /></RequireAuth>} />
