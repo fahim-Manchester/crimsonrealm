@@ -77,9 +77,12 @@ interface QuestItemListProps {
   onUncheckItem: (itemId: string) => void;
   onUpdateTime: (itemId: string, minutes: number) => void;
   onMarkPermanent?: (itemId: string) => void;
-  timedTaskId?: string | null; // NEW: Which task is actually being timed
-  selectedTaskId?: string | null; // NEW: Which task is selected in UI
-  isTimerRunning?: boolean; // NEW: Is any timer currently running?
+  onSetTargetTime?: (itemId: string, seconds: number) => void;
+  onRemoveTargetTime?: (itemId: string) => void;
+  targetTimes?: Record<string, number>;
+  timedTaskId?: string | null;
+  selectedTaskId?: string | null;
+  isTimerRunning?: boolean;
 }
 
 export function QuestItemList({
