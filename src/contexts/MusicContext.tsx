@@ -600,12 +600,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const setTickingVolume = useCallback((vol: number) => setSettings(s => ({ ...s, tickingVolume: vol })), []);
   const updateSettingsFn = useCallback((newSettings: Partial<MusicSettings>) => setSettings(s => ({ ...s, ...newSettings })), []);
 
-  // Temporary playback
+  // Temporary playback (external URL via iframe)
   const playTemporary = useCallback((url: string) => {
     // Fade out internal audio without clearing queue
     if (audioRef.current && state.isPlaying) {
       fadeOut(() => { audioRef.current?.pause(); });
     }
+    setTemporaryInternalQueue([]);
+    setTemporaryInternalIndex(0);
     setState(s => ({
       ...s,
       temporaryUrl: url,
@@ -615,10 +617,44 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
   }, [state.isPlaying, fadeOut]);
 
+  // Temporary playback (internal theme tracks via audioRef, loops by default)
+  const playTemporaryInternal = useCallback((tracks: QueueItem[], startIndex = 0) => {
+    if (!audioRef.current || tracks.length === 0) return;
+    // Fade out current audio if playing
+    const startPlayback = () => {
+      const track = tracks[startIndex];
+      setTemporaryInternalQueue(tracks);
+      setTemporaryInternalIndex(startIndex);
+      audioRef.current!.src = track.url;
+      audioRef.current!.loop = tracks.length === 1; // single track loops itself
+      audioRef.current!.volume = 0;
+      audioRef.current!.play().catch(console.error);
+      fadeIn();
+      setState(s => ({
+        ...s,
+        useTemporary: true,
+        temporaryIsPlaying: true,
+        temporaryUrl: "",
+        isPlaying: false,
+      }));
+    };
+    if (state.isPlaying && audioRef.current && !audioRef.current.paused) {
+      fadeOut(startPlayback);
+    } else {
+      startPlayback();
+    }
+  }, [state.isPlaying, fadeOut, fadeIn]);
+
   const clearTemporary = useCallback(() => {
     if (iframeRef.current) iframeRef.current.src = "";
+    if (audioRef.current && temporaryInternalQueue.length > 0) {
+      audioRef.current.pause();
+      audioRef.current.loop = false;
+    }
+    setTemporaryInternalQueue([]);
+    setTemporaryInternalIndex(0);
     setState(s => ({ ...s, temporaryUrl: "", useTemporary: false, temporaryIsPlaying: false }));
-  }, []);
+  }, [temporaryInternalQueue]);
 
   const notifyCampaignTimerState = useCallback((isRunning: boolean, isInCampaign: boolean) => {
     setCampaignState({ isRunning, isInCampaign });
