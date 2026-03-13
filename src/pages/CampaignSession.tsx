@@ -291,8 +291,10 @@ const CampaignSession = () => {
     : { background: themeConfig.backgroundCss };
 
   // Phase display helpers
-  const phaseLabel = timerMode.currentPhase === "work" ? "Work"
-    : timerMode.currentPhase === "shortBreak" ? "Short Break"
+  const phaseLabel = timerMode.currentPhase === "work"
+    ? (timerMode.settings.mode === "ultradian" ? "Focus" : "Work")
+    : timerMode.currentPhase === "shortBreak"
+    ? (timerMode.settings.mode === "ultradian" ? "Rest" : "Short Break")
     : timerMode.currentPhase === "longBreak" ? "Long Break"
     : null;
 
