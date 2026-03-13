@@ -608,7 +608,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     fadeOut(() => { audioRef.current?.pause(); });
     setState(s => ({ ...s, isPlaying: false }));
-  }, [state.useTemporary, state.currentTrackIsExternal, pauseTemporaryExternal, fadeOut]);
+  }, [state.useTemporary, state.currentTrackIsExternal, state.currentTrack, pauseTemporaryExternal, fadeOut, isYouTubeUrl, cancelYTFade]);
 
   const toggle = useCallback(() => {
     if (state.useTemporary) {
