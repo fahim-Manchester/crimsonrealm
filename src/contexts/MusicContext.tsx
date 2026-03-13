@@ -118,8 +118,9 @@ export function getEmbedUrl(url: string): string | null {
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
     const videoId = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1];
     const playlistId = url.match(/[?&]list=([^"&?\/\s]+)/)?.[1];
-    if (playlistId) return `https://www.youtube.com/embed/videoseries?list=${playlistId}&autoplay=1&enablejsapi=1`;
-    if (videoId) return `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1`;
+    const params = "autoplay=1&enablejsapi=1&playsinline=1&rel=0";
+    if (playlistId) return `https://www.youtube.com/embed/videoseries?list=${playlistId}&${params}`;
+    if (videoId) return `https://www.youtube.com/embed/${videoId}?${params}`;
   }
   if (url.includes("spotify.com")) {
     const match = url.match(/spotify\.com\/(playlist|album|track)\/([a-zA-Z0-9]+)/);
@@ -334,10 +335,36 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, FADE_INTERVAL);
   }, [cancelYTFade, setYouTubeVolume]);
 
+  const startExternalPlayback = useCallback((url: string) => {
+    const embedUrl = getEmbedUrl(url);
+    if (!embedUrl || !iframeRef.current) return;
+
+    cancelYTFade();
+    iframeRef.current.src = embedUrl;
+
+    if (isYouTubeUrl(url)) {
+      const ytVolume = Math.max(0, Math.min(100, Math.round(settings.musicVolume * 100)));
+      const ensurePlay = () => {
+        if (!iframeRef.current?.contentWindow) return;
+        iframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+        iframeRef.current.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*');
+        iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [ytVolume] }), "*");
+      };
+
+      setTimeout(ensurePlay, 250);
+      setTimeout(ensurePlay, 1000);
+    }
+  }, [cancelYTFade, isYouTubeUrl, settings.musicVolume]);
+
   // ---- Volume sync ----
   useEffect(() => {
     if (audioRef.current && !fadeIntervalRef.current) audioRef.current.volume = settings.musicVolume;
-  }, [settings.musicVolume]);
+
+    if (state.currentTrackIsExternal && state.currentTrack && isYouTubeUrl(state.currentTrack.url)) {
+      iframeRef.current?.contentWindow?.postMessage('{"event":"command","func":"unMute","args":""}', '*');
+      setYouTubeVolume(Math.max(0, Math.min(100, Math.round(settings.musicVolume * 100))));
+    }
+  }, [settings.musicVolume, state.currentTrackIsExternal, state.currentTrack, isYouTubeUrl, setYouTubeVolume]);
 
   // ---- Active queue helper ----
   const getActiveQueue = useCallback(() => {
@@ -413,11 +440,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (external) {
       // Stop any internal audio
       if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
-      // Load the embed URL into the iframe
-      const embedUrl = getEmbedUrl(track.url);
-      if (embedUrl && iframeRef.current) {
-        iframeRef.current.src = embedUrl;
-      }
+      // Load/play external embed
+      startExternalPlayback(track.url);
       setState(s => ({
         ...s, currentTrack: track, currentTrackIndex: index, isPlaying: true,
         useTemporary: false, currentTrackIsExternal: true,
@@ -436,7 +460,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         useTemporary: false, currentTrackIsExternal: false,
       }));
     }
-  }, [mainQueue, downtimeQueue, state.activeSource, fadeIn]);
+  }, [mainQueue, downtimeQueue, state.activeSource, fadeIn, startExternalPlayback]);
 
   // ---- Temporary (external) playback ----
   const playTemporaryExternal = useCallback((url: string) => {
@@ -543,9 +567,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     // Resume external track
     if (state.currentTrackIsExternal && state.currentTrack) {
-      // Re-load iframe (can't really "resume" an iframe embed)
-      const embedUrl = getEmbedUrl(state.currentTrack.url);
-      if (embedUrl && iframeRef.current) iframeRef.current.src = embedUrl;
+      if (isYouTubeUrl(state.currentTrack.url) && iframeRef.current?.contentWindow && iframeRef.current.src) {
+        cancelYTFade();
+        iframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+        iframeRef.current.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*');
+        setYouTubeVolume(Math.max(0, Math.min(100, Math.round(settings.musicVolume * 100))));
+      } else {
+        startExternalPlayback(state.currentTrack.url);
+      }
       setState(s => ({ ...s, isPlaying: true }));
       return;
     }
@@ -563,19 +592,23 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setState(s => ({ ...s, activeSource: "main" }));
       setTimeout(() => playQueueAtIndex(0), 0);
     }
-  }, [state, themeTracks, playQueueAtIndex, fadeIn, playTemporaryExternal, getActiveQueue]);
+  }, [state, themeTracks, playQueueAtIndex, fadeIn, playTemporaryExternal, getActiveQueue, startExternalPlayback, isYouTubeUrl, cancelYTFade, setYouTubeVolume, settings.musicVolume]);
 
   const pause = useCallback(() => {
     if (state.useTemporary) { pauseTemporaryExternal(); return; }
     if (state.currentTrackIsExternal) {
-      // Stop iframe
-      if (iframeRef.current) iframeRef.current.src = "";
+      if (state.currentTrack && isYouTubeUrl(state.currentTrack.url)) {
+        cancelYTFade();
+        iframeRef.current?.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+      } else if (iframeRef.current) {
+        iframeRef.current.src = "";
+      }
       setState(s => ({ ...s, isPlaying: false }));
       return;
     }
     fadeOut(() => { audioRef.current?.pause(); });
     setState(s => ({ ...s, isPlaying: false }));
-  }, [state.useTemporary, state.currentTrackIsExternal, pauseTemporaryExternal, fadeOut]);
+  }, [state.useTemporary, state.currentTrackIsExternal, state.currentTrack, pauseTemporaryExternal, fadeOut, isYouTubeUrl, cancelYTFade]);
 
   const toggle = useCallback(() => {
     if (state.useTemporary) {
@@ -595,10 +628,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (external) {
         // Stop internal audio
         if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
-        const embedUrl = getEmbedUrl(item.url);
-        if (embedUrl && iframeRef.current) {
-          iframeRef.current.src = embedUrl;
-        }
+        startExternalPlayback(item.url);
         setState(s => ({
           ...s, currentTrack: item, currentTrackIndex: index, isPlaying: true,
           useTemporary: false, currentTrackIsExternal: true,
@@ -627,7 +657,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } else {
       doSwitch();
     }
-  }, [state.isPlaying, state.activeSource, state.currentTrackIsExternal, fadeOut, fadeIn]);
+  }, [state.isPlaying, state.activeSource, state.currentTrackIsExternal, fadeOut, fadeIn, startExternalPlayback]);
 
   const nextTrack = useCallback(() => {
     const queue = getActiveQueue();
