@@ -281,6 +281,58 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
           )}
         </span>
 
+        {/* Target time display/edit */}
+        <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+          {isEditingTarget ? (
+            <div className="flex items-center gap-1">
+              <Input
+                type="number"
+                min={1}
+                value={targetEditValue}
+                onChange={(e) => setTargetEditValue(e.target.value)}
+                className="w-14 h-6 text-xs px-1"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const mins = parseInt(targetEditValue) || 0;
+                    if (mins > 0 && onSetTargetTime) onSetTargetTime(mins * 60);
+                    setIsEditingTarget(false);
+                  }
+                  if (e.key === "Escape") setIsEditingTarget(false);
+                }}
+              />
+              <span className="text-[10px] text-muted-foreground">min</span>
+              <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => {
+                const mins = parseInt(targetEditValue) || 0;
+                if (mins > 0 && onSetTargetTime) onSetTargetTime(mins * 60);
+                setIsEditingTarget(false);
+              }}>
+                <Check className="w-3 h-3 text-accent" />
+              </Button>
+              {targetTimeSeconds && onRemoveTargetTime && (
+                <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => {
+                  onRemoveTargetTime();
+                  setIsEditingTarget(false);
+                }}>
+                  <X className="w-3 h-3 text-destructive" />
+                </Button>
+              )}
+            </div>
+          ) : (
+            <button
+              className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors px-1"
+              onClick={() => {
+                setTargetEditValue(targetTimeSeconds ? Math.round(targetTimeSeconds / 60).toString() : "");
+                setIsEditingTarget(true);
+              }}
+              title="Set target time"
+            >
+              <Target className="w-3 h-3" />
+              {targetTimeSeconds ? `${Math.round(targetTimeSeconds / 60)}m` : "—"}
+            </button>
+          )}
+        </div>
+
         {/* Time display/edit */}
         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           {isEditingTime ? (

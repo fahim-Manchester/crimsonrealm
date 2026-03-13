@@ -209,6 +209,9 @@ export function QuestItemList({
                   onUnembed={indentLevel > 0 ? () => onSetParent(item.id, null) : undefined}
                   onUpdateTime={(mins) => onUpdateTime(item.id, mins)}
                   onMarkPermanent={item.is_temporary && onMarkPermanent ? () => onMarkPermanent(item.id) : undefined}
+                  onSetTargetTime={onSetTargetTime ? (secs) => onSetTargetTime(item.id, secs) : undefined}
+                  onRemoveTargetTime={onRemoveTargetTime ? () => onRemoveTargetTime(item.id) : undefined}
+                  targetTimeSeconds={targetTimes[item.id]}
                   sessionTimeSeconds={itemSessionTimes[item.id] || 0}
                   nestDropId={nestId(item.id)}
                   isDragActive={isDragActive}
