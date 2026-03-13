@@ -285,7 +285,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
         </span>
 
         {/* Target time display/edit */}
-        <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center" data-no-select onClick={(e) => e.stopPropagation()}>
           {isEditingTarget ? (
             <div className="flex items-center gap-1">
               <Input
@@ -328,7 +328,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
                 setTargetEditValue(targetTimeSeconds ? Math.round(targetTimeSeconds / 60).toString() : "");
                 setIsEditingTarget(true);
               }}
-              title="Set target time"
+              title="Target time — the goal duration for this item"
             >
               <Target className="w-3 h-3" />
               {targetTimeSeconds ? `${Math.round(targetTimeSeconds / 60)}m` : "—"}
@@ -337,7 +337,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
         </div>
 
         {/* Time display/edit */}
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2" data-no-select onClick={(e) => e.stopPropagation()}>
           {isEditingTime ? (
             <div className="flex items-center gap-1">
               <Input
@@ -358,7 +358,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
             </div>
           ) : (
             <>
-              <span className="text-xs text-muted-foreground flex items-center gap-1 font-mono">
+              <span className="text-xs text-muted-foreground flex items-center gap-1 font-mono" title="Time spent — total time logged on this item">
                 <Clock className="w-3 h-3" />
                 {totalTimeSpent > 0 ? formatTimeHMS(totalTimeSpent) : "00:00:00"}{showAggregatedTime ? " total" : ""}
               </span>
@@ -368,6 +368,7 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
                   variant="ghost"
                   className="h-6 w-6 opacity-50 hover:opacity-100"
                   onClick={handleTimeEditStart}
+                  title="Edit time spent"
                 >
                   <Edit2 className="w-3 h-3" />
                 </Button>
