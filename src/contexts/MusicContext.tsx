@@ -569,27 +569,45 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (source && source !== state.activeSource) {
       setState(s => ({ ...s, activeSource: source }));
     }
-    if (!audioRef.current) return;
+    const external = isExternalUrl(item.url);
+
     const doSwitch = () => {
-      audioRef.current!.src = item.url;
-      audioRef.current!.volume = 0;
-      audioRef.current!.play().catch(console.error);
-      fadeIn();
-      setState(s => ({
-        ...s,
-        currentTrack: item,
-        currentTrackIndex: index,
-        isPlaying: true,
-        useTemporary: false,
-        activeSource: source || s.activeSource,
-      }));
+      if (external) {
+        // Stop internal audio
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
+        const embedUrl = getEmbedUrl(item.url);
+        if (embedUrl && iframeRef.current) {
+          iframeRef.current.src = embedUrl;
+        }
+        setState(s => ({
+          ...s, currentTrack: item, currentTrackIndex: index, isPlaying: true,
+          useTemporary: false, currentTrackIsExternal: true,
+          activeSource: source || s.activeSource,
+        }));
+      } else {
+        // Stop iframe
+        if (iframeRef.current) iframeRef.current.src = "";
+        if (!audioRef.current) return;
+        audioRef.current.src = item.url;
+        audioRef.current.volume = 0;
+        audioRef.current.play().catch(console.error);
+        fadeIn();
+        setState(s => ({
+          ...s, currentTrack: item, currentTrackIndex: index, isPlaying: true,
+          useTemporary: false, currentTrackIsExternal: false,
+          activeSource: source || s.activeSource,
+        }));
+      }
     };
-    if (state.isPlaying && audioRef.current && !audioRef.current.paused) {
+    if (state.isPlaying && !external && audioRef.current && !audioRef.current.paused) {
       fadeOut(doSwitch);
+    } else if (state.isPlaying && state.currentTrackIsExternal) {
+      // Currently playing external, just switch
+      doSwitch();
     } else {
       doSwitch();
     }
-  }, [state.isPlaying, state.activeSource, fadeOut, fadeIn]);
+  }, [state.isPlaying, state.activeSource, state.currentTrackIsExternal, fadeOut, fadeIn]);
 
   const nextTrack = useCallback(() => {
     const queue = getActiveQueue();
