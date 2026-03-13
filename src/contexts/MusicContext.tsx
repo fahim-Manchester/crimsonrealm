@@ -600,8 +600,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (state.useTemporary) { pauseTemporaryExternal(); return; }
     if (state.currentTrackIsExternal) {
       if (state.currentTrack && isYouTubeUrl(state.currentTrack.url)) {
-        cancelYTFade();
-        iframeRef.current?.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+        // Fade out YouTube then pause
+        fadeOutYT(() => {
+          iframeRef.current?.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+        });
       } else if (iframeRef.current) {
         iframeRef.current.src = "";
       }
@@ -610,7 +612,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     fadeOut(() => { audioRef.current?.pause(); });
     setState(s => ({ ...s, isPlaying: false }));
-  }, [state.useTemporary, state.currentTrackIsExternal, state.currentTrack, pauseTemporaryExternal, fadeOut, isYouTubeUrl, cancelYTFade]);
+  }, [state.useTemporary, state.currentTrackIsExternal, state.currentTrack, pauseTemporaryExternal, fadeOut, fadeOutYT, isYouTubeUrl]);
 
   const toggle = useCallback(() => {
     if (state.useTemporary) {
