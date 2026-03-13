@@ -1,78 +1,70 @@
 
-# Fix: Mobile PWA Layout -- Cramped UI and Overflow Issues
 
-## Problem
+# Quick Play Theme Tracks + Add New Music Button
 
-When running as a PWA on mobile (standalone mode), several screens have layout issues:
+## Two Changes
 
-1. **Campaign Session page (screenshot 4)**: The 4 clocks in a row (`grid-cols-4`) are too cramped on small screens -- labels like "CAMPAIGN TOTAL" and "CURRENT TASK" overflow their boxes, and time values like "01:17:34" get cut off.
+### 1. Quick Play Tab — Add Theme Track Selection & Looping
 
-2. **Campaign Cards (screenshots 2-3)**: The action buttons (edit, pause, play, complete, delete, refresh) all sit in one row next to the campaign title, causing the title to wrap excessively and buttons to feel cramped.
+Currently the Quick Play tab only has an external URL input. We'll add:
 
-3. **Quest Items (screenshot 4)**: Items like "Dishes POP..." and "Coo..." are truncated too aggressively because the row has too many inline elements (grip + icon + bookmark + name + badge + time + edit button + status).
+- A **theme tracks section** listing individual tracks from the current theme, each clickable to play temporarily
+- An **"All [Theme] Music"** button that plays all theme tracks in rotation as temporary playback (loops by default)
+- Quick play will **loop by default** — whatever is selected repeats until cleared
+- The external URL input remains as-is below the theme section
 
-4. **Home page header (screenshot 1)**: "REALM", settings icon, install checkmark, and "Leave Realm" button are tight but functional -- minor improvement possible.
+The temporary playback system in MusicContext already supports internal tracks via `audioRef`. We'll extend `playTemporary` to accept an internal track (or set of tracks) so Quick Play can use theme music without touching the queues. This means adding a `playTemporaryInternal` method that loads a track into `audioRef` in "temporary" mode (loop enabled, queues untouched).
 
-## Solution
+For "All Theme Music" rotation, we'll store a temporary internal playlist in state and auto-advance through it on track end.
 
-### 1. SessionClock -- Responsive sizing for small screens
+### 2. "+Add New Music" Button in Queue Panels
 
-**File: `src/components/campaigns/SessionClock.tsx`**
+Add a third button to `MusicQueuePanel` alongside "Theme Tracks" and "From Library":
 
-- Reduce padding on mobile: `p-2 md:p-6` instead of `p-4 md:p-6`
-- Reduce time font size on mobile: `text-lg md:text-4xl` instead of `text-2xl md:text-4xl`
-- Reduce label font size: `text-[10px] md:text-sm`
+- **"+ Add New"** button that opens the `SaveMusicDialog` to save a new external track/playlist
+- On first save ever, show a confirmation dialog explaining that a Music Database section will be created in Chronicles
+- After confirmation (or if music DB already has items), save the track and add it to the current queue
+- The "first time" check: simply check if `savedItems.length === 0` before saving
 
-### 2. Campaign Session Clocks Grid -- 2x2 on mobile, 4 columns on desktop
+A new `onAddNew` callback prop on `MusicQueuePanel` triggers this flow in `MusicPlayer.tsx`.
 
-**File: `src/pages/CampaignSession.tsx`**
+## File Changes
 
-- Change `grid-cols-4` to `grid-cols-2 md:grid-cols-4` so the 4 clocks arrange as a 2x2 grid on mobile
-- Reduce section padding on mobile
+| File | Change |
+|------|--------|
+| `src/contexts/MusicContext.tsx` | Add `playTemporaryInternal(tracks: QueueItem[], startIndex?: number)` method + `temporaryInternalQueue` state + auto-advance logic for temp internal tracks + default loop for temp playback |
+| `src/components/music/MusicPlayer.tsx` | Redesign Quick Play tab: add theme track list, "All Theme Music" button, keep external URL input. Add first-time music DB confirmation dialog. Wire `onAddNew` to queue panels. |
+| `src/components/music/MusicQueuePanel.tsx` | Add `onAddNew` prop and render a third "+ Add New" button |
 
-### 3. Campaign Session Header -- Wrap buttons on mobile
+## Quick Play Tab Layout
 
-**File: `src/pages/CampaignSession.tsx`**
+```text
+┌─────────────────────────────────┐
+│ 🎵 Theme Tracks                │
+│                                 │
+│  ▶ Crimson Requiem              │
+│  ▶ Cathedral of Shadows         │
+│  ▶ Blood Moon Sonata            │
+│  ...                            │
+│                                 │
+│  [ Play All Theme Music ]       │
+│                                 │
+│ ─────────────────────────────── │
+│ Or paste an external link:      │
+│ [_________________________] [▶] │
+│                                 │
+│ ⟳ Looping (on by default)      │
+│                                 │
+│ [Save to Library]               │
+└─────────────────────────────────┘
+```
 
-- Allow the header buttons ("New Session", "End Session") to wrap or stack on small screens using `flex-wrap`
-- Use shorter button text on mobile (icon-only or abbreviated)
+## First-Time Music DB Flow
 
-### 4. Campaign Card Action Buttons -- Wrap on mobile
+When user clicks "+ Add New" in a queue panel:
+1. Check if `savedItems.length === 0`
+2. If yes → show AlertDialog: "This will create a Music Database in your [Chronicles section name]. Proceed?"
+3. On confirm → open SaveMusicDialog
+4. On save → item saved to DB, also added to the queue
+5. If savedItems already exist → skip confirmation, go straight to SaveMusicDialog
 
-**File: `src/components/campaigns/CampaignCard.tsx`**
-
-- Change the action buttons container from a single row to `flex-wrap` so buttons wrap to a second line on small screens instead of cramming next to the title
-
-### 5. SortableTaskItem -- Better mobile layout
-
-**File: `src/components/campaigns/SortableTaskItem.tsx`**
-
-- Reduce gap and padding on mobile: `gap-2 p-2 md:gap-3 md:p-3`
-- Allow the task name to use `min-w-0` to ensure proper truncation
-- Hide the "POP-UP" / "HIDDEN" badge text on very small screens (keep just the icon)
-- Make the time display more compact on mobile
-
-### 6. Campaigns Page -- Reduce padding on mobile
-
-**File: `src/pages/Campaigns.tsx`**
-
-- Reduce horizontal padding: `px-4 md:px-12` instead of `px-6 md:px-12`
-- Reduce hero section margins on mobile
-
----
-
-## Technical Changes Summary
-
-| File | Changes |
-|------|---------|
-| `src/components/campaigns/SessionClock.tsx` | Smaller padding, font sizes on mobile |
-| `src/pages/CampaignSession.tsx` | 2x2 clock grid on mobile, wrap header buttons, reduce padding |
-| `src/components/campaigns/CampaignCard.tsx` | `flex-wrap` on action buttons |
-| `src/components/campaigns/SortableTaskItem.tsx` | Tighter mobile spacing, hide badge text on small screens |
-| `src/pages/Campaigns.tsx` | Reduce mobile padding |
-
----
-
-## Key Principle
-
-All changes use responsive Tailwind classes (e.g., `text-lg md:text-4xl`, `grid-cols-2 md:grid-cols-4`) so desktop remains unchanged while mobile gets a properly spaced layout.
