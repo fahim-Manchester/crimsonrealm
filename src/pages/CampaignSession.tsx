@@ -1,15 +1,18 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Play, Pause, CheckCircle, Plus, LogOut, RotateCcw, Ban } from "lucide-react";
+import { ArrowLeft, Play, Pause, CheckCircle, Plus, LogOut, RotateCcw, Ban, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampaignSession } from "@/hooks/useCampaignSession";
 import { useTimerMode } from "@/hooks/useTimerMode";
+import { useTaskQueue } from "@/hooks/useTaskQueue";
 import { SessionClock } from "@/components/campaigns/SessionClock";
 import { QuestItemList } from "@/components/campaigns/QuestItemList";
 import { AddItemDialog } from "@/components/campaigns/AddItemDialog";
 import { TimerModeSettings } from "@/components/campaigns/TimerModeSettings";
+import { TaskQueuePanel } from "@/components/campaigns/TaskQueuePanel";
+import { QueueProgressBar } from "@/components/campaigns/QueueProgressBar";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { toast } from "sonner";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -54,7 +57,8 @@ const CampaignSession = () => {
     setCurrentTaskIndex,
     uncheckItem,
     updateItemTimeManually,
-    setItemParent
+    setItemParent,
+    switchToTask
   } = useCampaignSession(campaign);
 
   // Timer mode integration
@@ -63,6 +67,12 @@ const CampaignSession = () => {
     startTimer,
     pauseTimer,
   });
+
+  // Task Queue integration
+  const taskQueue = useTaskQueue(campaign?.id ?? null, items);
+
+  // Track pomodoro phase transitions for auto-advance
+  const prevPhaseRef = useRef(timerMode.currentPhase);
 
   // Notify music context of timer state for auto play/pause
   useEffect(() => {
@@ -108,6 +118,68 @@ const CampaignSession = () => {
     );
   }, [items, itemSessionTimes]);
 
+  // ---- Queue Auto-Advance Logic ----
+
+  // Auto-advance on target time reached
+  useEffect(() => {
+    if (!taskQueue.isQueueActive) return;
+    if (taskQueue.settings.autoAdvanceTrigger !== "target_time") return;
+    if (!sessionState.isRunning) return;
+
+    const currentItemId = taskQueue.currentQueueItemId;
+    if (!currentItemId) return;
+
+    const targetSeconds = taskQueue.settings.targetTimes[currentItemId];
+    if (!targetSeconds) return;
+
+    const elapsedSeconds = (itemSessionTimes[currentItemId] || 0) + (items.find(i => i.id === currentItemId)?.time_spent || 0);
+
+    // Only the session time matters for target tracking
+    const sessionSeconds = itemSessionTimes[currentItemId] || 0;
+    if (sessionSeconds >= targetSeconds) {
+      handleQueueAdvance();
+    }
+  }, [itemSessionTimes, taskQueue.isQueueActive, taskQueue.settings, taskQueue.currentQueueItemId, sessionState.isRunning]);
+
+  // Auto-advance on pomodoro work phase completion
+  useEffect(() => {
+    if (!taskQueue.isQueueActive) return;
+    if (taskQueue.settings.autoAdvanceTrigger !== "pomodoro") return;
+
+    const prevPhase = prevPhaseRef.current;
+    const curPhase = timerMode.currentPhase;
+    prevPhaseRef.current = curPhase;
+
+    // Advance when work phase ends (transitions to break)
+    if (prevPhase === "work" && curPhase !== "work" && curPhase !== null) {
+      handleQueueAdvance();
+    }
+  }, [timerMode.currentPhase, taskQueue.isQueueActive, taskQueue.settings.autoAdvanceTrigger]);
+
+  const handleQueueAdvance = useCallback(async () => {
+    const currentItemId = taskQueue.currentQueueItemId;
+
+    // Optionally mark the current task as complete
+    if (taskQueue.settings.completionBehavior === "mark_complete" && currentItemId) {
+      await completeCurrentTask();
+    }
+
+    // Advance to next queue item
+    const nextItemId = taskQueue.advanceQueue();
+    if (nextItemId) {
+      switchToTask(nextItemId);
+      const nextItem = items.find(i => i.id === nextItemId);
+      const nextTitle = nextItem?.is_temporary
+        ? nextItem.temporary_name
+        : nextItem?.task?.title || nextItem?.project?.name;
+      toast.success(`Queue advanced → ${nextTitle || "Next task"}`);
+    } else {
+      toast.success("🎉 Queue complete! All tasks finished.");
+    }
+  }, [taskQueue, completeCurrentTask, switchToTask, items]);
+
+  // ---- Handlers ----
+
   const handleSetParent = async (itemId: string, parentItemId: string | null) => {
     const result = await setItemParent(itemId, parentItemId);
     if (result?.blocked && result.reason === 'completed') {
@@ -126,17 +198,28 @@ const CampaignSession = () => {
 
   const handleNewSession = async () => {
     timerMode.resetPhases();
+    taskQueue.refreshQueue();
     await startNewSession();
     toast.success("New session started!");
   };
 
   const handleCompleteTask = async () => {
+    // If queue is active, use queue advance logic
+    if (taskQueue.isQueueActive && taskQueue.currentQueueItemId === sessionState.timedTaskId) {
+      await handleQueueAdvance();
+      return;
+    }
     await completeCurrentTask();
     toast.success("Task completed! Moving to next.");
   };
 
   const handleAbandonTask = async () => {
     await abandonCurrentTask();
+    // If queue active, skip to next
+    if (taskQueue.isQueueActive) {
+      const nextId = taskQueue.advanceQueue();
+      if (nextId) switchToTask(nextId);
+    }
     toast.info("Task abandoned. Moving to next.");
   };
 
@@ -177,6 +260,21 @@ const CampaignSession = () => {
   const handleUpdateItemTime = async (itemId: string, minutes: number) => {
     await updateItemTimeManually(itemId, minutes);
     toast.success("Time updated");
+  };
+
+  const handleStartQueueSession = () => {
+    if (taskQueue.queue.length === 0) {
+      toast.error("Add tasks to the queue first");
+      return;
+    }
+    taskQueue.updateSettings({ enabled: true });
+    taskQueue.setQueueIndex(0);
+    const firstItemId = taskQueue.queue[0];
+    if (firstItemId) {
+      switchToTask(firstItemId);
+      startTimer(firstItemId);
+    }
+    toast.success("Queue session started!");
   };
 
   if (authLoading || loading) return <LoadingSpinner />;
@@ -247,6 +345,20 @@ const CampaignSession = () => {
               onUpdateChess={timerMode.updateChessSettings}
               onUpdatePomodoro={timerMode.updatePomodoroSettings}
             />
+            <TaskQueuePanel
+              items={items}
+              queue={taskQueue.queue}
+              currentQueueIndex={taskQueue.currentQueueIndex}
+              settings={taskQueue.settings}
+              itemSessionTimes={itemSessionTimes}
+              onAddToQueue={taskQueue.addToQueue}
+              onRemoveFromQueue={taskQueue.removeFromQueue}
+              onReorderQueue={taskQueue.reorderQueue}
+              onClearQueue={taskQueue.clearQueue}
+              onRefreshQueue={taskQueue.refreshQueue}
+              onUpdateSettings={taskQueue.updateSettings}
+              onSetTargetTime={taskQueue.setTargetTime}
+            />
             <Button
               variant="outline"
               size="sm"
@@ -288,6 +400,19 @@ const CampaignSession = () => {
                   {formatPhaseTime(timerMode.phaseTimeRemaining)}
                 </span>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Queue Progress Bar */}
+        {taskQueue.isQueueActive && (
+          <div className="px-4 md:px-8 pt-3">
+            <div className="max-w-4xl mx-auto">
+              <QueueProgressBar
+                queueItems={taskQueue.queueItems}
+                currentQueueIndex={taskQueue.currentQueueIndex}
+                isActive={taskQueue.isQueueActive}
+              />
             </div>
           </div>
         )}
@@ -348,6 +473,19 @@ const CampaignSession = () => {
                 </>
               )}
             </Button>
+
+            {/* Start Queue Session button - only show when queue has items but isn't running */}
+            {!sessionState.isRunning && taskQueue.queue.length > 0 && !taskQueue.settings.enabled && (
+              <Button
+                size="lg"
+                variant="outline"
+                onClick={handleStartQueueSession}
+                className="border-primary/50 hover:bg-primary/10 gap-2"
+              >
+                <Zap className="w-5 h-5 text-primary" />
+                Start Queue Session
+              </Button>
+            )}
             
             {canComplete && (
               <>
