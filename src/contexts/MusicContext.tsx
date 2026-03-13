@@ -199,6 +199,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [mainQueue, setMainQueue] = useState<QueueItem[]>(() => loadLocal().main_queue || []);
   const [downtimeQueue, setDowntimeQueue] = useState<QueueItem[]>(() => loadLocal().downtime_queue || []);
   const [state, setState] = useState<MusicState>(defaultState);
+  const [temporaryInternalQueue, setTemporaryInternalQueue] = useState<QueueItem[]>([]);
+  const [temporaryInternalIndex, setTemporaryInternalIndex] = useState(0);
   const [campaignState, setCampaignState] = useState({ isRunning: false, isInCampaign: false });
 
   const themeTracks = THEMES[theme]?.tracks || [];
