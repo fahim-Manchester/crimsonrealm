@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-export type TimerMode = "normal" | "chess" | "pomodoro";
+export type TimerMode = "normal" | "chess" | "pomodoro" | "ultradian";
 export type TimerPhase = "work" | "shortBreak" | "longBreak" | null;
 
 export interface ChessSettings {
@@ -15,16 +15,23 @@ export interface PomodoroSettings {
   cyclesBeforeLongBreak: number;
 }
 
+export interface UltradianSettings {
+  workMinutes: number;
+  restMinutes: number;
+}
+
 export interface TimerModeSettings {
   mode: TimerMode;
   chess: ChessSettings;
   pomodoro: PomodoroSettings;
+  ultradian: UltradianSettings;
 }
 
 const DEFAULT_SETTINGS: TimerModeSettings = {
   mode: "normal",
   chess: { workMinutes: 25, breakMinutes: 5 },
   pomodoro: { workMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, cyclesBeforeLongBreak: 4 },
+  ultradian: { workMinutes: 90, restMinutes: 20 },
 };
 
 const STORAGE_KEY = "timerModeSettings";
@@ -34,7 +41,11 @@ function loadSettings(): TimerModeSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return { ...DEFAULT_SETTINGS, ...parsed };
+      return {
+        ...DEFAULT_SETTINGS,
+        ...parsed,
+        ultradian: { ...DEFAULT_SETTINGS.ultradian, ...parsed?.ultradian },
+      };
     }
   } catch { /* ignore */ }
   return { ...DEFAULT_SETTINGS };
@@ -83,6 +94,10 @@ export function useTimerMode({ isTimerRunning, startTimer, pauseTimer }: UseTime
     setSettings(prev => ({ ...prev, pomodoro: { ...prev.pomodoro, ...partial } }));
   }, []);
 
+  const updateUltradianSettings = useCallback((partial: Partial<UltradianSettings>) => {
+    setSettings(prev => ({ ...prev, ultradian: { ...prev.ultradian, ...partial } }));
+  }, []);
+
   const playPhaseSound = useCallback(() => {
     try {
       const ctx = new AudioContext();
@@ -103,9 +118,13 @@ export function useTimerMode({ isTimerRunning, startTimer, pauseTimer }: UseTime
     const s = settingsRef.current;
     switch (phase) {
       case "work":
-        return s.mode === "chess" ? s.chess.workMinutes * 60 : s.pomodoro.workMinutes * 60;
+        if (s.mode === "chess") return s.chess.workMinutes * 60;
+        if (s.mode === "ultradian") return s.ultradian.workMinutes * 60;
+        return s.pomodoro.workMinutes * 60;
       case "shortBreak":
-        return s.mode === "chess" ? s.chess.breakMinutes * 60 : s.pomodoro.shortBreakMinutes * 60;
+        if (s.mode === "chess") return s.chess.breakMinutes * 60;
+        if (s.mode === "ultradian") return s.ultradian.restMinutes * 60;
+        return s.pomodoro.shortBreakMinutes * 60;
       case "longBreak":
         return s.pomodoro.longBreakMinutes * 60;
       default:
@@ -119,9 +138,9 @@ export function useTimerMode({ isTimerRunning, startTimer, pauseTimer }: UseTime
 
     playPhaseSound();
 
-    if (s.mode === "chess") {
+    if (s.mode === "chess" || s.mode === "ultradian") {
       if (phase === "work") {
-        // Switch to break → pause task timer
+        // Switch to rest → pause task timer
         pauseTimer();
         setCurrentPhase("shortBreak");
         setPhaseTimeRemaining(getPhaseSeconds("shortBreak"));
@@ -238,6 +257,7 @@ export function useTimerMode({ isTimerRunning, startTimer, pauseTimer }: UseTime
     updateSettings,
     updateChessSettings,
     updatePomodoroSettings,
+    updateUltradianSettings,
     resetPhases,
   };
 }

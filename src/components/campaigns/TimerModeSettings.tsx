@@ -5,16 +5,17 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import type { TimerModeSettings as TSettings, TimerMode, ChessSettings, PomodoroSettings } from "@/hooks/useTimerMode";
+import type { TimerModeSettings as TSettings, TimerMode, ChessSettings, PomodoroSettings, UltradianSettings } from "@/hooks/useTimerMode";
 
 interface TimerModeSettingsProps {
   settings: TSettings;
   onUpdateSettings: (partial: Partial<TSettings>) => void;
   onUpdateChess: (partial: Partial<ChessSettings>) => void;
   onUpdatePomodoro: (partial: Partial<PomodoroSettings>) => void;
+  onUpdateUltradian?: (partial: Partial<UltradianSettings>) => void;
 }
 
-export function TimerModeSettings({ settings, onUpdateSettings, onUpdateChess, onUpdatePomodoro }: TimerModeSettingsProps) {
+export function TimerModeSettings({ settings, onUpdateSettings, onUpdateChess, onUpdatePomodoro, onUpdateUltradian }: TimerModeSettingsProps) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -45,6 +46,10 @@ export function TimerModeSettings({ settings, onUpdateSettings, onUpdateChess, o
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="pomodoro" id="mode-pomodoro" />
               <Label htmlFor="mode-pomodoro" className="font-crimson cursor-pointer">Pomodoro</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="ultradian" id="mode-ultradian" />
+              <Label htmlFor="mode-ultradian" className="font-crimson cursor-pointer">Ultradian</Label>
             </div>
           </RadioGroup>
 
@@ -133,6 +138,39 @@ export function TimerModeSettings({ settings, onUpdateSettings, onUpdateChess, o
                     className="h-8 w-20"
                   />
                   <span className="text-xs text-muted-foreground">before long</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {settings.mode === "ultradian" && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">Deep work / rest rhythm (~90/20)</p>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-14 shrink-0">Focus</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={180}
+                    value={settings.ultradian.workMinutes}
+                    onChange={(e) => onUpdateUltradian?.({ workMinutes: Math.max(1, parseInt(e.target.value) || 1) })}
+                    className="h-8 w-20"
+                  />
+                  <span className="text-xs text-muted-foreground">min</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-14 shrink-0">Rest</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={settings.ultradian.restMinutes}
+                    onChange={(e) => onUpdateUltradian?.({ restMinutes: Math.max(1, parseInt(e.target.value) || 1) })}
+                    className="h-8 w-20"
+                  />
+                  <span className="text-xs text-muted-foreground">min</span>
                 </div>
               </div>
             </>
