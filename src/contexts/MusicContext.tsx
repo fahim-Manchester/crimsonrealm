@@ -567,9 +567,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const pause = useCallback(() => {
     if (state.useTemporary) { pauseTemporaryExternal(); return; }
+    if (state.currentTrackIsExternal) {
+      // Stop iframe
+      if (iframeRef.current) iframeRef.current.src = "";
+      setState(s => ({ ...s, isPlaying: false }));
+      return;
+    }
     fadeOut(() => { audioRef.current?.pause(); });
     setState(s => ({ ...s, isPlaying: false }));
-  }, [state.useTemporary, pauseTemporaryExternal, fadeOut]);
+  }, [state.useTemporary, state.currentTrackIsExternal, pauseTemporaryExternal, fadeOut]);
 
   const toggle = useCallback(() => {
     if (state.useTemporary) {
