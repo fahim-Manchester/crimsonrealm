@@ -51,7 +51,7 @@ const MusicPlayer = () => {
     playTemporary, playTemporaryInternal, clearTemporary, pauseTemporary, resumeTemporary,
   } = useMusic();
 
-  const { items: savedItems, loading: savedLoading, addItem: saveItem, updateItem: updateSavedItem } = useSavedMusic(user?.id);
+  const { items: savedItems, loading: savedLoading, addItem: saveItem, updateItem: updateSavedItem, uploadAndSave: uploadItem } = useSavedMusic(user?.id);
 
   // Theme-aware label for "all theme music"
   const allThemeLabel = `All ${themeConfig.displayName} Music`;
