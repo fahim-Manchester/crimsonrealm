@@ -118,8 +118,9 @@ export function getEmbedUrl(url: string): string | null {
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
     const videoId = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1];
     const playlistId = url.match(/[?&]list=([^"&?\/\s]+)/)?.[1];
-    if (playlistId) return `https://www.youtube.com/embed/videoseries?list=${playlistId}&autoplay=1&enablejsapi=1`;
-    if (videoId) return `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1`;
+    const params = "autoplay=1&enablejsapi=1&playsinline=1&rel=0";
+    if (playlistId) return `https://www.youtube.com/embed/videoseries?list=${playlistId}&${params}`;
+    if (videoId) return `https://www.youtube.com/embed/${videoId}?${params}`;
   }
   if (url.includes("spotify.com")) {
     const match = url.match(/spotify\.com\/(playlist|album|track)\/([a-zA-Z0-9]+)/);
