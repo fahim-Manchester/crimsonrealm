@@ -402,16 +402,40 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => audio.removeEventListener("ended", handleEnded);
   }, [state.currentTrackIndex, state.activeSource, state.useTemporary, temporaryInternalQueue, temporaryInternalIndex, mainQueue, downtimeQueue, settings.loopMode, settings.downtimeLoopMode]);
 
-  // ---- Internal playback ----
+  // ---- Queue playback (handles both internal audio & external iframe) ----
   const playQueueAtIndex = useCallback((index: number) => {
     const queue = state.activeSource === "downtime" ? downtimeQueue : mainQueue;
     const track = queue[index];
-    if (!track || !audioRef.current) return;
-    audioRef.current.src = track.url;
-    audioRef.current.volume = 0;
-    audioRef.current.play().catch(console.error);
-    fadeIn();
-    setState(s => ({ ...s, currentTrack: track, currentTrackIndex: index, isPlaying: true, useTemporary: false }));
+    if (!track) return;
+
+    const external = isExternalUrl(track.url);
+
+    if (external) {
+      // Stop any internal audio
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
+      // Load the embed URL into the iframe
+      const embedUrl = getEmbedUrl(track.url);
+      if (embedUrl && iframeRef.current) {
+        iframeRef.current.src = embedUrl;
+      }
+      setState(s => ({
+        ...s, currentTrack: track, currentTrackIndex: index, isPlaying: true,
+        useTemporary: false, currentTrackIsExternal: true,
+      }));
+    } else {
+      // Stop iframe if it was playing
+      if (iframeRef.current) iframeRef.current.src = "";
+      // Play via audio element
+      if (!audioRef.current) return;
+      audioRef.current.src = track.url;
+      audioRef.current.volume = 0;
+      audioRef.current.play().catch(console.error);
+      fadeIn();
+      setState(s => ({
+        ...s, currentTrack: track, currentTrackIndex: index, isPlaying: true,
+        useTemporary: false, currentTrackIsExternal: false,
+      }));
+    }
   }, [mainQueue, downtimeQueue, state.activeSource, fadeIn]);
 
   // ---- Temporary (external) playback ----
