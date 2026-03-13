@@ -628,10 +628,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (external) {
         // Stop internal audio
         if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
-        const embedUrl = getEmbedUrl(item.url);
-        if (embedUrl && iframeRef.current) {
-          iframeRef.current.src = embedUrl;
-        }
+        startExternalPlayback(item.url);
         setState(s => ({
           ...s, currentTrack: item, currentTrackIndex: index, isPlaying: true,
           useTemporary: false, currentTrackIsExternal: true,
