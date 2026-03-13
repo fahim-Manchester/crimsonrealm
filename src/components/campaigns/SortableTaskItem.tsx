@@ -50,14 +50,17 @@ const formatTimeShort = (seconds: number | null) => {
 
 export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps>(function SortableTaskItem({ 
   item, 
-  isCurrentTask, // Task being timed
-  isSelected, // Task selected in UI (may differ from isCurrentTask)
-  isTimerRunning = false, // NEW: Is any timer currently running globally?
+  isCurrentTask,
+  isSelected,
+  isTimerRunning = false,
   onSelect, 
   onUncheck,
   onUpdateTime,
   onUnembed,
   onMarkPermanent,
+  onSetTargetTime,
+  onRemoveTargetTime,
+  targetTimeSeconds,
   sessionTimeSeconds = 0,
   indentLevel = 0,
   displayTimeSeconds,
