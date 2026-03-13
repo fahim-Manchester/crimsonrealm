@@ -65,6 +65,7 @@ interface MusicContextType {
   updateSettings: (settings: Partial<MusicSettings>) => void;
   // Temporary playback
   playTemporary: (url: string) => void;
+  playTemporaryInternal: (tracks: QueueItem[], startIndex?: number) => void;
   clearTemporary: () => void;
   pauseTemporary: () => void;
   resumeTemporary: () => void;

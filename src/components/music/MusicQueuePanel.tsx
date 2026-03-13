@@ -21,6 +21,7 @@ interface MusicQueuePanelProps {
   onLoopChange: (mode: "none" | "queue" | "one") => void;
   onAddFromLibrary: () => void;
   onAddInternal: () => void;
+  onAddNew?: () => void;
   label: string;
 }
 
