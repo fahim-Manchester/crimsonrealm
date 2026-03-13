@@ -205,6 +205,7 @@ const Campaigns = () => {
               onUpdateSettings={timerModeHook.updateSettings}
               onUpdateChess={timerModeHook.updateChessSettings}
               onUpdatePomodoro={timerModeHook.updatePomodoroSettings}
+              onUpdateUltradian={timerModeHook.updateUltradianSettings}
             />
             <span className="font-crimson text-sm text-muted-foreground hidden md:block">
               {user?.email}
