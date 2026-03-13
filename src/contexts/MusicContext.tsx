@@ -730,12 +730,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setCampaignState({ isRunning, isInCampaign });
   }, []);
 
-  // Embed URL — for temporary external playback OR queue external tracks
-  const currentEmbedUrl = state.useTemporary && state.temporaryUrl
-    ? getEmbedUrl(state.temporaryUrl)
-    : null;
-  // Note: queue external tracks set iframe.src directly in playQueueAtIndex/playQueueItem,
-  // so we always render the iframe element (hidden).
+  // Manage iframe src imperatively to prevent React re-renders from clearing it
+  useEffect(() => {
+    if (!iframeRef.current) return;
+    if (state.useTemporary && state.temporaryUrl) {
+      const embedUrl = getEmbedUrl(state.temporaryUrl);
+      if (embedUrl) {
+        iframeRef.current.src = embedUrl;
+        return;
+      }
+    }
+    // Don't clear iframe src here — queue tracks set it imperatively in playQueueAtIndex
+  }, [state.useTemporary, state.temporaryUrl]);
 
   return (
     <MusicContext.Provider
@@ -783,7 +789,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       {/* Always render iframe for external playback (queue or temporary) */}
       <iframe
         ref={iframeRef}
-        src={currentEmbedUrl || ""}
         allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
         style={{ position: "fixed", top: -9999, left: -9999, width: 1, height: 1, border: "none", pointerEvents: "none" }}
         tabIndex={-1}
