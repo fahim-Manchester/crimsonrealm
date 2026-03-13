@@ -335,10 +335,36 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, FADE_INTERVAL);
   }, [cancelYTFade, setYouTubeVolume]);
 
+  const startExternalPlayback = useCallback((url: string) => {
+    const embedUrl = getEmbedUrl(url);
+    if (!embedUrl || !iframeRef.current) return;
+
+    cancelYTFade();
+    iframeRef.current.src = embedUrl;
+
+    if (isYouTubeUrl(url)) {
+      const ytVolume = Math.max(0, Math.min(100, Math.round(settings.musicVolume * 100)));
+      const ensurePlay = () => {
+        if (!iframeRef.current?.contentWindow) return;
+        iframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+        iframeRef.current.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*');
+        iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [ytVolume] }), "*");
+      };
+
+      setTimeout(ensurePlay, 250);
+      setTimeout(ensurePlay, 1000);
+    }
+  }, [cancelYTFade, isYouTubeUrl, settings.musicVolume]);
+
   // ---- Volume sync ----
   useEffect(() => {
     if (audioRef.current && !fadeIntervalRef.current) audioRef.current.volume = settings.musicVolume;
-  }, [settings.musicVolume]);
+
+    if (state.currentTrackIsExternal && state.currentTrack && isYouTubeUrl(state.currentTrack.url)) {
+      iframeRef.current?.contentWindow?.postMessage('{"event":"command","func":"unMute","args":""}', '*');
+      setYouTubeVolume(Math.max(0, Math.min(100, Math.round(settings.musicVolume * 100))));
+    }
+  }, [settings.musicVolume, state.currentTrackIsExternal, state.currentTrack, isYouTubeUrl, setYouTubeVolume]);
 
   // ---- Active queue helper ----
   const getActiveQueue = useCallback(() => {
