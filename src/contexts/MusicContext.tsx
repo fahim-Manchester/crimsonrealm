@@ -109,6 +109,11 @@ const MusicContext = createContext<MusicContextType | undefined>(undefined);
 
 // ---- Helpers ----
 
+function isExternalUrl(url: string): boolean {
+  return url.includes("youtube.com") || url.includes("youtu.be") ||
+    url.includes("spotify.com") || url.includes("soundcloud.com");
+}
+
 export function getEmbedUrl(url: string): string | null {
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
     const videoId = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1];
