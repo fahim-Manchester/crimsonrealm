@@ -326,12 +326,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const fadeInYT = useCallback(() => {
     cancelYTFade();
     setYouTubeVolume(0);
+    const targetYT = Math.max(0, Math.min(100, Math.round(targetVolumeRef.current * 100)));
     let cur = 0;
-    const step = 100 / FADE_STEPS;
+    const step = targetYT / FADE_STEPS;
     youtubeFadeIntervalRef.current = setInterval(() => {
       cur++;
-      setYouTubeVolume(Math.min(100, step * cur));
-      if (cur >= FADE_STEPS) { cancelYTFade(); setYouTubeVolume(100); }
+      setYouTubeVolume(Math.min(targetYT, Math.round(step * cur)));
+      if (cur >= FADE_STEPS) { cancelYTFade(); setYouTubeVolume(targetYT); }
     }, FADE_INTERVAL);
   }, [cancelYTFade, setYouTubeVolume]);
 
