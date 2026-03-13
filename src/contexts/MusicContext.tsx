@@ -345,11 +345,37 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const audio = audioRef.current;
     if (!audio) return;
     const handleEnded = () => {
+      // Handle temporary internal playback (Quick Play theme tracks)
+      if (state.useTemporary && temporaryInternalQueue.length > 0) {
+        const nextIdx = temporaryInternalIndex + 1;
+        if (nextIdx < temporaryInternalQueue.length) {
+          // Play next in temp rotation
+          setTemporaryInternalIndex(nextIdx);
+          const track = temporaryInternalQueue[nextIdx];
+          audio.src = track.url;
+          audio.loop = temporaryInternalQueue.length === 1;
+          audio.volume = 0;
+          audio.play().catch(() => {});
+          fadeIn();
+          setState(s => ({ ...s, temporaryIsPlaying: true }));
+        } else {
+          // Loop back to start (Quick Play always loops)
+          setTemporaryInternalIndex(0);
+          const track = temporaryInternalQueue[0];
+          audio.src = track.url;
+          audio.loop = temporaryInternalQueue.length === 1;
+          audio.volume = 0;
+          audio.play().catch(() => {});
+          fadeIn();
+          setState(s => ({ ...s, temporaryIsPlaying: true }));
+        }
+        return;
+      }
+
       const queue = getActiveQueue();
       const loopMode = getActiveLoopMode();
 
       if (loopMode === "one" && state.currentTrackIndex >= 0) {
-        // Replay same track
         audio.currentTime = 0;
         audio.play().catch(() => {});
         return;
@@ -366,7 +392,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     audio.addEventListener("ended", handleEnded);
     return () => audio.removeEventListener("ended", handleEnded);
-  }, [state.currentTrackIndex, state.activeSource, mainQueue, downtimeQueue, settings.loopMode, settings.downtimeLoopMode]);
+  }, [state.currentTrackIndex, state.activeSource, state.useTemporary, temporaryInternalQueue, temporaryInternalIndex, mainQueue, downtimeQueue, settings.loopMode, settings.downtimeLoopMode]);
 
   // ---- Internal playback ----
   const playQueueAtIndex = useCallback((index: number) => {
