@@ -456,6 +456,7 @@ const Resources = () => {
         onSave={saveMusicItem}
         editItem={editingMusic}
         onUpdate={updateMusicItem}
+        onUpload={uploadMusicItem}
       />
 
       {/* Delete single music confirmation */}

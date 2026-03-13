@@ -506,6 +506,7 @@ const MusicPlayer = () => {
         onOpenChange={(open) => { setShowSaveDialog(open); if (!open) setAddNewTarget(null); }}
         onSave={addNewTarget ? handleSaveAndAddToQueue : saveItem}
         defaultUrl={saveDefaultUrl}
+        onUpload={uploadItem}
       />
     </>
   );
