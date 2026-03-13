@@ -568,10 +568,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Resume external track
     if (state.currentTrackIsExternal && state.currentTrack) {
       if (isYouTubeUrl(state.currentTrack.url) && iframeRef.current?.contentWindow && iframeRef.current.src) {
+        // Fade in YouTube: start muted, unmute at 0, then ramp up
         cancelYTFade();
+        setYouTubeVolume(0);
         iframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
         iframeRef.current.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*');
-        setYouTubeVolume(Math.max(0, Math.min(100, Math.round(settings.musicVolume * 100))));
+        fadeInYT();
       } else {
         startExternalPlayback(state.currentTrack.url);
       }
@@ -592,7 +594,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setState(s => ({ ...s, activeSource: "main" }));
       setTimeout(() => playQueueAtIndex(0), 0);
     }
-  }, [state, themeTracks, playQueueAtIndex, fadeIn, playTemporaryExternal, getActiveQueue, startExternalPlayback, isYouTubeUrl, cancelYTFade, setYouTubeVolume, settings.musicVolume]);
+  }, [state, themeTracks, playQueueAtIndex, fadeIn, fadeInYT, playTemporaryExternal, getActiveQueue, startExternalPlayback, isYouTubeUrl, cancelYTFade, setYouTubeVolume, settings.musicVolume]);
 
   const pause = useCallback(() => {
     if (state.useTemporary) { pauseTemporaryExternal(); return; }
