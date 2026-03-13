@@ -6,7 +6,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
 import InstallButton from "@/components/pwa/InstallButton";
 import ThemeSwitcher from "@/components/theme/ThemeSwitcher";
-import MusicPlayer from "@/components/music/MusicPlayer";
+
 
 interface PageLayoutProps {
   children: ReactNode;
