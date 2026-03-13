@@ -72,6 +72,8 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
   const isHighlighted = isSelected !== undefined ? isSelected : isCurrentTask;
   const [isEditingTime, setIsEditingTime] = useState(false);
   const [editTimeValue, setEditTimeValue] = useState("");
+  const [isEditingTarget, setIsEditingTarget] = useState(false);
+  const [targetEditValue, setTargetEditValue] = useState("");
 
   const {
     attributes,
