@@ -292,6 +292,33 @@ export type Database = {
         }
         Relationships: []
       }
+      music_preferences: {
+        Row: {
+          downtime_queue: Json
+          id: string
+          main_queue: Json
+          settings: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          downtime_queue?: Json
+          id?: string
+          main_queue?: Json
+          settings?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          downtime_queue?: Json
+          id?: string
+          main_queue?: Json
+          settings?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
           created_at: string
@@ -425,6 +452,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      saved_music: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          source_platform: string | null
+          title: string
+          type: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          source_platform?: string | null
+          title: string
+          type?: string
+          url: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          source_platform?: string | null
+          title?: string
+          type?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       tasks: {
         Row: {
