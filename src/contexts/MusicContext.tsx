@@ -65,6 +65,7 @@ interface MusicContextType {
   updateSettings: (settings: Partial<MusicSettings>) => void;
   // Temporary playback
   playTemporary: (url: string) => void;
+  playTemporaryInternal: (tracks: QueueItem[], startIndex?: number) => void;
   clearTemporary: () => void;
   pauseTemporary: () => void;
   resumeTemporary: () => void;
@@ -198,6 +199,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [mainQueue, setMainQueue] = useState<QueueItem[]>(() => loadLocal().main_queue || []);
   const [downtimeQueue, setDowntimeQueue] = useState<QueueItem[]>(() => loadLocal().downtime_queue || []);
   const [state, setState] = useState<MusicState>(defaultState);
+  const [temporaryInternalQueue, setTemporaryInternalQueue] = useState<QueueItem[]>([]);
+  const [temporaryInternalIndex, setTemporaryInternalIndex] = useState(0);
   const [campaignState, setCampaignState] = useState({ isRunning: false, isInCampaign: false });
 
   const themeTracks = THEMES[theme]?.tracks || [];
@@ -342,11 +345,37 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const audio = audioRef.current;
     if (!audio) return;
     const handleEnded = () => {
+      // Handle temporary internal playback (Quick Play theme tracks)
+      if (state.useTemporary && temporaryInternalQueue.length > 0) {
+        const nextIdx = temporaryInternalIndex + 1;
+        if (nextIdx < temporaryInternalQueue.length) {
+          // Play next in temp rotation
+          setTemporaryInternalIndex(nextIdx);
+          const track = temporaryInternalQueue[nextIdx];
+          audio.src = track.url;
+          audio.loop = temporaryInternalQueue.length === 1;
+          audio.volume = 0;
+          audio.play().catch(() => {});
+          fadeIn();
+          setState(s => ({ ...s, temporaryIsPlaying: true }));
+        } else {
+          // Loop back to start (Quick Play always loops)
+          setTemporaryInternalIndex(0);
+          const track = temporaryInternalQueue[0];
+          audio.src = track.url;
+          audio.loop = temporaryInternalQueue.length === 1;
+          audio.volume = 0;
+          audio.play().catch(() => {});
+          fadeIn();
+          setState(s => ({ ...s, temporaryIsPlaying: true }));
+        }
+        return;
+      }
+
       const queue = getActiveQueue();
       const loopMode = getActiveLoopMode();
 
       if (loopMode === "one" && state.currentTrackIndex >= 0) {
-        // Replay same track
         audio.currentTime = 0;
         audio.play().catch(() => {});
         return;
@@ -363,7 +392,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     audio.addEventListener("ended", handleEnded);
     return () => audio.removeEventListener("ended", handleEnded);
-  }, [state.currentTrackIndex, state.activeSource, mainQueue, downtimeQueue, settings.loopMode, settings.downtimeLoopMode]);
+  }, [state.currentTrackIndex, state.activeSource, state.useTemporary, temporaryInternalQueue, temporaryInternalIndex, mainQueue, downtimeQueue, settings.loopMode, settings.downtimeLoopMode]);
 
   // ---- Internal playback ----
   const playQueueAtIndex = useCallback((index: number) => {
@@ -571,12 +600,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const setTickingVolume = useCallback((vol: number) => setSettings(s => ({ ...s, tickingVolume: vol })), []);
   const updateSettingsFn = useCallback((newSettings: Partial<MusicSettings>) => setSettings(s => ({ ...s, ...newSettings })), []);
 
-  // Temporary playback
+  // Temporary playback (external URL via iframe)
   const playTemporary = useCallback((url: string) => {
     // Fade out internal audio without clearing queue
     if (audioRef.current && state.isPlaying) {
       fadeOut(() => { audioRef.current?.pause(); });
     }
+    setTemporaryInternalQueue([]);
+    setTemporaryInternalIndex(0);
     setState(s => ({
       ...s,
       temporaryUrl: url,
@@ -586,10 +617,44 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
   }, [state.isPlaying, fadeOut]);
 
+  // Temporary playback (internal theme tracks via audioRef, loops by default)
+  const playTemporaryInternal = useCallback((tracks: QueueItem[], startIndex = 0) => {
+    if (!audioRef.current || tracks.length === 0) return;
+    // Fade out current audio if playing
+    const startPlayback = () => {
+      const track = tracks[startIndex];
+      setTemporaryInternalQueue(tracks);
+      setTemporaryInternalIndex(startIndex);
+      audioRef.current!.src = track.url;
+      audioRef.current!.loop = tracks.length === 1; // single track loops itself
+      audioRef.current!.volume = 0;
+      audioRef.current!.play().catch(console.error);
+      fadeIn();
+      setState(s => ({
+        ...s,
+        useTemporary: true,
+        temporaryIsPlaying: true,
+        temporaryUrl: "",
+        isPlaying: false,
+      }));
+    };
+    if (state.isPlaying && audioRef.current && !audioRef.current.paused) {
+      fadeOut(startPlayback);
+    } else {
+      startPlayback();
+    }
+  }, [state.isPlaying, fadeOut, fadeIn]);
+
   const clearTemporary = useCallback(() => {
     if (iframeRef.current) iframeRef.current.src = "";
+    if (audioRef.current && temporaryInternalQueue.length > 0) {
+      audioRef.current.pause();
+      audioRef.current.loop = false;
+    }
+    setTemporaryInternalQueue([]);
+    setTemporaryInternalIndex(0);
     setState(s => ({ ...s, temporaryUrl: "", useTemporary: false, temporaryIsPlaying: false }));
-  }, []);
+  }, [temporaryInternalQueue]);
 
   const notifyCampaignTimerState = useCallback((isRunning: boolean, isInCampaign: boolean) => {
     setCampaignState({ isRunning, isInCampaign });
@@ -624,9 +689,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setTickingVolume,
         updateSettings: updateSettingsFn,
         playTemporary,
+        playTemporaryInternal,
         clearTemporary,
         pauseTemporary: pauseTemporaryExternal,
-        resumeTemporary: () => playTemporaryExternal(state.temporaryUrl),
+        resumeTemporary: () => {
+          if (temporaryInternalQueue.length > 0 && audioRef.current) {
+            audioRef.current.play().catch(() => {});
+            fadeIn();
+            setState(s => ({ ...s, temporaryIsPlaying: true }));
+          } else {
+            playTemporaryExternal(state.temporaryUrl);
+          }
+        },
         notifyCampaignTimerState,
         getEmbedUrl,
       }}

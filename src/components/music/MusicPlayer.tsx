@@ -1,11 +1,15 @@
 import { useState } from "react";
 import {
-  Music, Play, Pause, SkipBack, SkipForward, Volume2, ExternalLink, X,
-  Radio, HelpCircle, Clock,
+  Music, Play, Pause, SkipBack, SkipForward, Volume2, X,
+  Radio, HelpCircle, Clock, Repeat,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -31,6 +35,8 @@ const MusicPlayer = () => {
   const [showThemePicker, setShowThemePicker] = useState<"main" | "downtime" | null>(null);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveDefaultUrl, setSaveDefaultUrl] = useState("");
+  const [addNewTarget, setAddNewTarget] = useState<"main" | "downtime" | null>(null);
+  const [showFirstTimeConfirm, setShowFirstTimeConfirm] = useState(false);
 
   const { themeConfig } = useTheme();
   const { user } = useAuth();
@@ -42,10 +48,14 @@ const MusicPlayer = () => {
     removeFromMainQueue, removeFromDowntimeQueue,
     reorderMainQueue, reorderDowntimeQueue,
     setMusicVolume, setTickingVolume, updateSettings,
-    playTemporary, clearTemporary, pauseTemporary, resumeTemporary,
+    playTemporary, playTemporaryInternal, clearTemporary, pauseTemporary, resumeTemporary,
   } = useMusic();
 
   const { items: savedItems, loading: savedLoading, addItem: saveItem, updateItem: updateSavedItem } = useSavedMusic(user?.id);
+
+  // Theme-aware label for "all theme music"
+  const allThemeLabel = `All ${themeConfig.displayName} Music`;
+  const musicDbLabel = themeConfig.labels.resources;
 
   // Add theme tracks to a queue
   const handleAddThemeTracks = (target: "main" | "downtime") => {
@@ -62,11 +72,51 @@ const MusicPlayer = () => {
     else addToDowntimeQueue(queueItem);
   };
 
-  // Temporary playback
+  // Quick Play: play a single theme track temporarily
+  const handleQuickPlayTrack = (track: { id: string; title: string; url: string }) => {
+    playTemporaryInternal([{ id: track.id, title: track.title, url: track.url, isInternal: true }]);
+  };
+
+  // Quick Play: play all theme tracks in rotation
+  const handleQuickPlayAllTheme = () => {
+    const items: QueueItem[] = themeTracks.map(t => ({ id: t.id, title: t.title, url: t.url, isInternal: true }));
+    playTemporaryInternal(items);
+  };
+
+  // Quick Play: temporary external playback
   const handleLoadTemporary = () => {
     if (tempUrl.trim()) {
       playTemporary(tempUrl.trim());
     }
+  };
+
+  // "+Add New" flow
+  const handleAddNew = (target: "main" | "downtime") => {
+    setAddNewTarget(target);
+    if (savedItems.length === 0) {
+      setShowFirstTimeConfirm(true);
+    } else {
+      setSaveDefaultUrl("");
+      setShowSaveDialog(true);
+    }
+  };
+
+  const handleFirstTimeConfirm = () => {
+    setShowFirstTimeConfirm(false);
+    setSaveDefaultUrl("");
+    setShowSaveDialog(true);
+  };
+
+  // After saving a new track, also add it to the target queue
+  const handleSaveAndAddToQueue = async (item: { title: string; url: string; type: "track" | "playlist"; description?: string }) => {
+    const saved = await saveItem(item);
+    if (saved && addNewTarget) {
+      const queueItem: QueueItem = { id: `saved-${saved.id}-${Date.now()}`, title: saved.title, url: saved.url };
+      if (addNewTarget === "main") addToMainQueue(queueItem);
+      else addToDowntimeQueue(queueItem);
+    }
+    setAddNewTarget(null);
+    return saved;
   };
 
   const isPlaying = state.useTemporary ? state.temporaryIsPlaying : state.isPlaying;
@@ -96,7 +146,7 @@ const MusicPlayer = () => {
                     <>
                       <p className="font-medium truncate flex items-center gap-2 text-sm">
                         <Radio className="h-4 w-4 text-primary animate-pulse" />
-                        Temporary Playback
+                        Quick Play
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {state.temporaryIsPlaying ? "Playing" : "Paused"} — queues preserved
@@ -198,6 +248,7 @@ const MusicPlayer = () => {
                       onLoopChange={mode => updateSettings({ loopMode: mode })}
                       onAddFromLibrary={() => setShowSavedBrowser("main")}
                       onAddInternal={() => setShowThemePicker("main")}
+                      onAddNew={() => handleAddNew("main")}
                       label="Main Music Queue"
                     />
                   )}
@@ -253,42 +304,82 @@ const MusicPlayer = () => {
                       onLoopChange={mode => updateSettings({ downtimeLoopMode: mode })}
                       onAddFromLibrary={() => setShowSavedBrowser("downtime")}
                       onAddInternal={() => setShowThemePicker("downtime")}
+                      onAddNew={() => handleAddNew("downtime")}
                       label="Downtime Queue"
                     />
                   )}
                 </TabsContent>
 
-                {/* Quick Play / Temporary Tab */}
+                {/* Quick Play Tab */}
                 <TabsContent value="temp">
-                  <div className="space-y-3">
-                    <p className="text-xs text-muted-foreground">
-                      Paste a link to play temporarily. Your queues won't be affected.
-                    </p>
-                    <div className="flex gap-2">
-                      <Input
-                        value={tempUrl}
-                        onChange={e => setTempUrl(e.target.value)}
-                        placeholder="YouTube, Spotify, SoundCloud..."
-                        className="flex-1"
-                      />
-                      <Button onClick={handleLoadTemporary} size="sm">Play</Button>
-                    </div>
-                    {tempUrl.trim() && (
+                  <div className="space-y-4">
+                    {/* Theme Tracks Section */}
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Music className="h-3.5 w-3.5" />
+                        {themeConfig.displayName} Tracks
+                      </h4>
+                      <div className="space-y-1">
+                        {themeTracks.map(track => (
+                          <button
+                            key={track.id}
+                            onClick={() => handleQuickPlayTrack(track)}
+                            className={cn(
+                              "w-full flex items-center gap-2 p-2 rounded-md text-left transition-colors text-sm",
+                              "hover:bg-primary/10"
+                            )}
+                          >
+                            <Play className="h-3 w-3 text-primary flex-shrink-0" />
+                            <span className="truncate">{track.title}</span>
+                          </button>
+                        ))}
+                      </div>
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => { setSaveDefaultUrl(tempUrl.trim()); setShowSaveDialog(true); }}
-                        className="text-xs"
+                        onClick={handleQuickPlayAllTheme}
+                        className="w-full text-xs"
                       >
-                        Save to Library
+                        <Repeat className="h-3 w-3 mr-1" />
+                        {allThemeLabel}
                       </Button>
-                    )}
+                    </div>
+
+                    <Separator />
+
+                    {/* External URL Section */}
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        Or paste an external link to play temporarily:
+                      </p>
+                      <div className="flex gap-2">
+                        <Input
+                          value={tempUrl}
+                          onChange={e => setTempUrl(e.target.value)}
+                          placeholder="YouTube, Spotify, SoundCloud..."
+                          className="flex-1"
+                        />
+                        <Button onClick={handleLoadTemporary} size="sm">Play</Button>
+                      </div>
+                      {tempUrl.trim() && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => { setSaveDefaultUrl(tempUrl.trim()); setAddNewTarget(null); setShowSaveDialog(true); }}
+                          className="text-xs"
+                        >
+                          Save to Library
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Active temporary playback indicator */}
                     {state.useTemporary && (
                       <div className="flex items-center justify-between bg-primary/5 rounded-lg p-3 border border-primary/20">
                         <div className="flex items-center gap-2">
                           <Radio className="h-4 w-4 text-primary animate-pulse" />
                           <span className="text-sm text-primary font-medium">
-                            {state.temporaryIsPlaying ? "Playing" : "Paused"}
+                            {state.temporaryIsPlaying ? "Playing" : "Paused"} — Looping
                           </span>
                         </div>
                         <Button size="sm" variant="ghost" onClick={clearTemporary}>
@@ -394,10 +485,26 @@ const MusicPlayer = () => {
         </DialogContent>
       </Dialog>
 
+      {/* First-time music DB confirmation */}
+      <AlertDialog open={showFirstTimeConfirm} onOpenChange={setShowFirstTimeConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Create Music Library</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will create a Music Database section in your {musicDbLabel} where saved tracks and playlists will be stored. You can manage them there anytime.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setAddNewTarget(null)}>Later</AlertDialogCancel>
+            <AlertDialogAction onClick={handleFirstTimeConfirm}>Proceed</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <SaveMusicDialog
         open={showSaveDialog}
-        onOpenChange={setShowSaveDialog}
-        onSave={saveItem}
+        onOpenChange={(open) => { setShowSaveDialog(open); if (!open) setAddNewTarget(null); }}
+        onSave={addNewTarget ? handleSaveAndAddToQueue : saveItem}
         defaultUrl={saveDefaultUrl}
       />
     </>
