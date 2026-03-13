@@ -186,6 +186,7 @@ const CampaignSession = () => {
         ? nextItem.temporary_name
         : nextItem?.task?.title || nextItem?.project?.name;
       toast.success(`Queue advanced → ${nextTitle || "Next task"}`);
+      reminders.notifyTaskSwitch(nextTitle || "Next task");
     } else {
       toast.success("🎉 Queue complete! All tasks finished.");
     }
