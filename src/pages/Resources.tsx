@@ -58,7 +58,7 @@ const Resources = () => {
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
   
   // Music database
-  const { items: savedMusic, loading: musicLoading, addItem: saveMusicItem, updateItem: updateMusicItem, deleteItem: deleteMusicItem } = useSavedMusic(user?.id);
+  const { items: savedMusic, loading: musicLoading, addItem: saveMusicItem, updateItem: updateMusicItem, deleteItem: deleteMusicItem, uploadAndSave: uploadMusicItem } = useSavedMusic(user?.id);
   const [showMusicDialog, setShowMusicDialog] = useState(false);
   const [editingMusic, setEditingMusic] = useState<SavedMusicItem | null>(null);
   const [showDeleteMusicConfirm, setShowDeleteMusicConfirm] = useState<string | null>(null);
