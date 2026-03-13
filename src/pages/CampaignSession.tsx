@@ -74,6 +74,16 @@ const CampaignSession = () => {
   // Task Queue integration
   const taskQueue = useTaskQueue(campaign?.id ?? null, items);
 
+  // Reminders integration
+  const reminders = useReminders({
+    campaignId: campaign?.id ?? null,
+    isTimerRunning: sessionState.isRunning,
+    onResetSession: async () => {
+      // Reset only the current session (keep campaign history)
+      await startNewSession();
+    },
+  });
+
   // Track pomodoro phase transitions for auto-advance
   const prevPhaseRef = useRef(timerMode.currentPhase);
 
