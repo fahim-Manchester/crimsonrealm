@@ -14,7 +14,6 @@ import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { toast } from "sonner";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useMusic } from "@/contexts/MusicContext";
-import MusicPlayer from "@/components/music/MusicPlayer";
 import gothicHeroBg from "@/assets/gothic-hero-bg.jpg";
 import type { Campaign } from "@/hooks/useCampaigns";
 
