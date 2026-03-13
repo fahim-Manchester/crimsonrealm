@@ -460,7 +460,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         useTemporary: false, currentTrackIsExternal: false,
       }));
     }
-  }, [mainQueue, downtimeQueue, state.activeSource, fadeIn]);
+  }, [mainQueue, downtimeQueue, state.activeSource, fadeIn, startExternalPlayback]);
 
   // ---- Temporary (external) playback ----
   const playTemporaryExternal = useCallback((url: string) => {
