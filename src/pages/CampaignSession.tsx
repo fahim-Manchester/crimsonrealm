@@ -362,6 +362,17 @@ const CampaignSession = () => {
               onUpdatePomodoro={timerMode.updatePomodoroSettings}
               onUpdateUltradian={timerMode.updateUltradianSettings}
             />
+            {reminders.isAvailable && (
+              <ReminderSettingsPanel
+                config={reminders.config}
+                onUpdateConfig={reminders.updateConfig}
+                onUpdateCheckIn={reminders.updateCheckIn}
+                onUpdateDangerous={reminders.updateDangerous}
+                onUpdateTaskSwitch={reminders.updateTaskSwitch}
+                sessionSmsCount={reminders.sessionSmsCount}
+                smsDisabled={reminders.smsDisabled}
+              />
+            )}
             <TaskQueuePanel
               items={items}
               queue={taskQueue.queue}
