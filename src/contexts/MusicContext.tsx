@@ -532,7 +532,21 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // ---- Public API ----
   const play = useCallback(() => {
     if (state.useTemporary) {
-      playTemporaryExternal(state.temporaryUrl);
+      if (temporaryInternalQueue.length > 0 && audioRef.current) {
+        audioRef.current.play().catch(() => {});
+        fadeIn();
+        setState(s => ({ ...s, temporaryIsPlaying: true }));
+      } else {
+        playTemporaryExternal(state.temporaryUrl);
+      }
+      return;
+    }
+    // Resume external track
+    if (state.currentTrackIsExternal && state.currentTrack) {
+      // Re-load iframe (can't really "resume" an iframe embed)
+      const embedUrl = getEmbedUrl(state.currentTrack.url);
+      if (embedUrl && iframeRef.current) iframeRef.current.src = embedUrl;
+      setState(s => ({ ...s, isPlaying: true }));
       return;
     }
     const queue = getActiveQueue();
