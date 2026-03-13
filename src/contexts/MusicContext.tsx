@@ -494,6 +494,20 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [state.temporaryUrl, isYouTubeUrl, fadeOutYT]);
 
   // ---- Campaign timer state ----
+  // Helper: fade-pause whatever is currently playing (internal or external)
+  const fadeAndPauseCurrent = useCallback(() => {
+    if (state.currentTrackIsExternal && state.currentTrack && isYouTubeUrl(state.currentTrack.url)) {
+      fadeOutYT(() => {
+        iframeRef.current?.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+      });
+    } else if (state.currentTrackIsExternal && iframeRef.current) {
+      iframeRef.current.src = "";
+    } else {
+      fadeOut(() => { audioRef.current?.pause(); });
+    }
+    setState(s => ({ ...s, isPlaying: false }));
+  }, [state.currentTrackIsExternal, state.currentTrack, isYouTubeUrl, fadeOutYT, fadeOut]);
+
   useEffect(() => {
     const { isRunning, isInCampaign } = campaignState;
 
@@ -512,15 +526,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (isRunning) {
         // Switch to main queue
         if (state.activeSource !== "main") {
-          fadeOut(() => { audioRef.current?.pause(); });
+          fadeAndPauseCurrent();
           setState(s => ({ ...s, activeSource: "main", isPlaying: false }));
-          // Auto-play main queue
           if (mainQueue.length > 0) {
             setTimeout(() => {
               const idx = state.currentTrack && mainQueue.some(q => q.id === state.currentTrack!.id) 
                 ? mainQueue.findIndex(q => q.id === state.currentTrack!.id) : 0;
               playQueueAtIndex(Math.max(0, idx));
-            }, 100);
+            }, FADE_DURATION + 100);
           }
         } else if (!state.isPlaying && mainQueue.length > 0) {
           playQueueAtIndex(state.currentTrackIndex >= 0 ? state.currentTrackIndex : 0);
@@ -528,10 +541,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         // Switch to downtime queue
         if (state.activeSource !== "downtime") {
-          fadeOut(() => { audioRef.current?.pause(); });
+          fadeAndPauseCurrent();
           setState(s => ({ ...s, activeSource: "downtime", isPlaying: false }));
           if (downtimeQueue.length > 0) {
-            setTimeout(() => playQueueAtIndex(0), 100);
+            setTimeout(() => playQueueAtIndex(0), FADE_DURATION + 100);
           }
         } else if (!state.isPlaying && downtimeQueue.length > 0) {
           playQueueAtIndex(state.currentTrackIndex >= 0 ? state.currentTrackIndex : 0);
@@ -542,17 +555,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (isRunning && isInCampaign && !state.isPlaying && mainQueue.length > 0) {
         playQueueAtIndex(state.currentTrackIndex >= 0 ? state.currentTrackIndex : 0);
       } else if (!isRunning && state.isPlaying) {
-        fadeOut(() => { audioRef.current?.pause(); });
-        setState(s => ({ ...s, isPlaying: false }));
+        fadeAndPauseCurrent();
       }
     }
 
     if (!settings.playOutsideCampaigns && !isInCampaign && state.isPlaying) {
-      fadeOut(() => { audioRef.current?.pause(); });
-      setState(s => ({ ...s, isPlaying: false }));
+      fadeAndPauseCurrent();
     }
   }, [campaignState, settings.playOnlyWhenTimerRunning, settings.downtimeEnabled, settings.playOutsideCampaigns, settings.clockTickingEnabled]);
-
   // ---- Public API ----
   const play = useCallback(() => {
     if (state.useTemporary) {
