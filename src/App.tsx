@@ -16,6 +16,7 @@ import CampaignSession from "./pages/CampaignSession";
 import Diary from "./pages/Diary";
 import Settings from "./pages/Settings";
 import Codex from "./pages/Codex";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import GlobalMusicBar from "./components/music/GlobalMusicBar";
 
@@ -42,6 +43,7 @@ const App = () => (
           {/* Public routes */}
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           
           {/* Protected routes - wrapped with RequireAuth */}
           <Route path="/home" element={<RequireAuth><Home /></RequireAuth>} />
