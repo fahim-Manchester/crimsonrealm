@@ -15,6 +15,7 @@ const Auth = () => {
   const { theme, themeConfig } = useTheme();
   const labels = themeConfig.labels;
   const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "signup");
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
