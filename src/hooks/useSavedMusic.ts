@@ -112,5 +112,50 @@ export function useSavedMusic(userId: string | undefined) {
     return true;
   }, [fetchItems]);
 
-  return { items, loading, fetchItems, addItem, updateItem, deleteItem };
+  const uploadAndSave = useCallback(async (file: File, title: string, description?: string) => {
+    if (!userId) return null;
+    const MAX_SIZE = 20 * 1024 * 1024; // 20MB
+    if (file.size > MAX_SIZE) {
+      toast.error("File too large (max 20MB)");
+      return null;
+    }
+    const ext = file.name.split(".").pop() || "mp3";
+    const fileName = `${userId}/${crypto.randomUUID()}.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from("music-uploads")
+      .upload(fileName, file, { contentType: file.type });
+
+    if (uploadError) {
+      toast.error("Upload failed: " + uploadError.message);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("music-uploads")
+      .getPublicUrl(fileName);
+
+    const publicUrl = urlData.publicUrl;
+    const { data, error } = await supabase
+      .from("saved_music")
+      .insert({
+        user_id: userId,
+        title,
+        url: publicUrl,
+        type: "track",
+        source_platform: "upload",
+        description: description || null,
+      } as any)
+      .select()
+      .single();
+
+    if (error) {
+      toast.error("Failed to save uploaded track");
+      return null;
+    }
+    toast.success("Track uploaded and saved");
+    await fetchItems();
+    return data as SavedMusicItem;
+  }, [userId, fetchItems]);
+
+  return { items, loading, fetchItems, addItem, updateItem, deleteItem, uploadAndSave };
 }
