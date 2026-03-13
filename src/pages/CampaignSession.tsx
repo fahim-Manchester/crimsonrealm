@@ -608,6 +608,14 @@ const CampaignSession = () => {
         onAddProject={handleAddProject}
         onAddTemporaryItem={handleAddTemporaryItem}
       />
+
+      {/* Dangerous Presence Modal */}
+      {reminders.showPresenceModal && (
+        <DangerousPresenceModal
+          countdown={reminders.presenceCountdown}
+          onConfirm={reminders.confirmPresence}
+        />
+      )}
     </div>
   );
 };
