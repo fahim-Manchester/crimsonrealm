@@ -343,18 +343,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     iframeRef.current.src = embedUrl;
 
     if (isYouTubeUrl(url)) {
-      const ytVolume = Math.max(0, Math.min(100, Math.round(settings.musicVolume * 100)));
+      // Start at volume 0 then fade in
       const ensurePlay = () => {
         if (!iframeRef.current?.contentWindow) return;
         iframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
         iframeRef.current.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*');
-        iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [ytVolume] }), "*");
+        setYouTubeVolume(0);
       };
 
       setTimeout(ensurePlay, 250);
-      setTimeout(ensurePlay, 1000);
+      setTimeout(() => { ensurePlay(); fadeInYT(); }, 1000);
     }
-  }, [cancelYTFade, isYouTubeUrl, settings.musicVolume]);
+  }, [cancelYTFade, isYouTubeUrl, setYouTubeVolume, fadeInYT]);
 
   // ---- Volume sync ----
   useEffect(() => {
