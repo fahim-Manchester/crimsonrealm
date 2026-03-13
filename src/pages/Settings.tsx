@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import PageLayout from "@/components/layout/PageLayout";
-import { Settings as SettingsIcon, Lock, Unlock, Phone, MessageSquare } from "lucide-react";
+import { Settings as SettingsIcon, Lock, Unlock, Phone, MessageSquare, Info } from "lucide-react";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
