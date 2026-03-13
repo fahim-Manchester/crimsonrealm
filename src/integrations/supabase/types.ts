@@ -486,6 +486,33 @@ export type Database = {
         }
         Relationships: []
       }
+      sms_log: {
+        Row: {
+          campaign_id: string | null
+          created_at: string
+          id: string
+          reminder_type: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string
+          id?: string
+          reminder_type: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string
+          id?: string
+          reminder_type?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tasks: {
         Row: {
           created_at: string
@@ -545,6 +572,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_settings: {
+        Row: {
+          created_at: string
+          external_unlocked: boolean
+          id: string
+          phone_number: string | null
+          sms_enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          external_unlocked?: boolean
+          id?: string
+          phone_number?: string | null
+          sms_enabled?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          external_unlocked?: boolean
+          id?: string
+          phone_number?: string | null
+          sms_enabled?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {

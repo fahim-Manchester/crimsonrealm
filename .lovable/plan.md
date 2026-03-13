@@ -1,123 +1,78 @@
-# SMS Reminders System — Implementation Plan
 
-## Overview
+# Fix: Mobile PWA Layout -- Cramped UI and Overflow Issues
 
-Add a Twilio-powered SMS reminder system with rate limiting, secret-code-gated settings, and three campaign-level reminder types. This requires database tables, an edge function, new UI in Settings and CampaignSession, and a React hook to orchestrate everything.
+## Problem
 
-## Architecture
+When running as a PWA on mobile (standalone mode), several screens have layout issues:
 
-```text
-Settings Page                    Campaign Session
-┌─────────────────┐             ┌─────────────────────┐
-│ Secret Code Gate │             │ Reminder Settings   │
-│ → Phone Number   │             │ Panel (per campaign)│
-│ → SMS consent    │             │ • Check-in          │
-└────────┬────────┘             │ • Dangerous         │
-         │                      │ • Task Switch       │
-         ▼                      └────────┬────────────┘
-   user_settings table                   │
-   (phone, sms_enabled)                  ▼
-                               useReminders hook
-                                    │
-                                    ▼
-                          Edge Function: send-sms
-                          (rate limiting + Twilio gateway)
-                                    │
-                                    ▼
-                           sms_log table (audit + rate limit)
-```
+1. **Campaign Session page (screenshot 4)**: The 4 clocks in a row (`grid-cols-4`) are too cramped on small screens -- labels like "CAMPAIGN TOTAL" and "CURRENT TASK" overflow their boxes, and time values like "01:17:34" get cut off.
 
-FYI -> You should be able to access the settings page using the gear icon that currently takes you to a settings page from the home page.   
-  
-Database Changes (2 new tables)
+2. **Campaign Cards (screenshots 2-3)**: The action buttons (edit, pause, play, complete, delete, refresh) all sit in one row next to the campaign title, causing the title to wrap excessively and buttons to feel cramped.
 
-### Table: `user_settings`
+3. **Quest Items (screenshot 4)**: Items like "Dishes POP..." and "Coo..." are truncated too aggressively because the row has too many inline elements (grip + icon + bookmark + name + badge + time + edit button + status).
 
-- `id` uuid PK default gen_random_uuid()
-- `user_id` uuid NOT NULL (unique)
-- `phone_number` varchar (nullable)
-- `sms_enabled` boolean default false
-- `external_unlocked` boolean default false
-- `created_at` / `updated_at` timestamps
-- RLS: users can CRUD their own row only
+4. **Home page header (screenshot 1)**: "REALM", settings icon, install checkmark, and "Leave Realm" button are tight but functional -- minor improvement possible.
 
-### Table: `sms_log`
+## Solution
 
-- `id` uuid PK
-- `user_id` uuid NOT NULL
-- `campaign_id` uuid (nullable)
-- `reminder_type` varchar (check_in | dangerous | task_switch)
-- `status` varchar (sent | failed)
-- `created_at` timestamp default now()
-- RLS: users can INSERT and SELECT their own rows only (no UPDATE/DELETE for audit integrity)
+### 1. SessionClock -- Responsive sizing for small screens
 
-## Edge Function: `send-sms`
+**File: `src/components/campaigns/SessionClock.tsx`**
 
-- Connects Twilio via the connector gateway
-- Accepts: `{ phone, message, userId, campaignId, reminderType }`
-- Server-side rate limiting: queries `sms_log` for count in last 24h (max 20) and current session marker (max 5)
-- On success: inserts into `sms_log`
-- On failure: returns error, caller disables reminders
-- JWT verification disabled in config.toml; validates auth in code
+- Reduce padding on mobile: `p-2 md:p-6` instead of `p-4 md:p-6`
+- Reduce time font size on mobile: `text-lg md:text-4xl` instead of `text-2xl md:text-4xl`
+- Reduce label font size: `text-[10px] md:text-sm`
 
-## New Files
+### 2. Campaign Session Clocks Grid -- 2x2 on mobile, 4 columns on desktop
 
-### `src/hooks/useReminders.ts`
+**File: `src/pages/CampaignSession.tsx`**
 
-- Loads user settings (phone, sms_enabled) from `user_settings`
-- Manages campaign-level reminder config in localStorage per campaign:
-  - `enabled`: boolean
-  - `checkIn`: { enabled, minutes }
-  - `dangerous`: { enabled, minutes, confirmWindowSeconds }
-  - `taskSwitch`: { enabled }
-- Tracks continuous timer duration; fires check-in/dangerous reminders
-- On task switch (called from CampaignSession), fires task-switch reminder
-- Tracks session SMS count client-side as first gate
-- Calls edge function `send-sms`
-- On "dangerous" timeout without confirmation: calls a provided `resetSession` callback
+- Change `grid-cols-4` to `grid-cols-2 md:grid-cols-4` so the 4 clocks arrange as a 2x2 grid on mobile
+- Reduce section padding on mobile
 
-### `src/components/campaigns/ReminderSettingsPanel.tsx`
+### 3. Campaign Session Header -- Wrap buttons on mobile
 
-- Sheet/popover in campaign header (like TimerModeSettings)
-- Only visible when user has phone + sms_enabled
-- Toggle: "Allow this campaign to send SMS reminders"
-- When enabled, shows 3 reminder type cards with toggles and minute inputs
+**File: `src/pages/CampaignSession.tsx`**
 
-### `src/components/campaigns/DangerousPresenceModal.tsx`
+- Allow the header buttons ("New Session", "End Session") to wrap or stack on small screens using `flex-wrap`
+- Use shorter button text on mobile (icon-only or abbreviated)
 
-- Full-screen overlay with countdown timer and "Mark Presence" button
-- Shows when dangerous reminder fires
-- If countdown expires, resets session
+### 4. Campaign Card Action Buttons -- Wrap on mobile
 
-### Settings Page (`src/pages/Settings.tsx`)
+**File: `src/components/campaigns/CampaignCard.tsx`**
 
-- Replace "Coming Soon" with actual settings UI
-- Section: "External Connections" with secret code input (GDG26)
-- Once unlocked: phone number input (international format) + SMS consent checkbox
-- Saves to `user_settings` table
+- Change the action buttons container from a single row to `flex-wrap` so buttons wrap to a second line on small screens instead of cramming next to the title
 
-## Modified Files
+### 5. SortableTaskItem -- Better mobile layout
 
-### `src/pages/CampaignSession.tsx`
+**File: `src/components/campaigns/SortableTaskItem.tsx`**
 
-- Import and initialize `useReminders` hook
-- Pass timer running state so hook can track continuous duration
-- On queue advance / task switch, call `reminders.notifyTaskSwitch(nextTaskName)`
-- Render `ReminderSettingsPanel` in header (conditionally)
-- Render `DangerousPresenceModal` when triggered
+- Reduce gap and padding on mobile: `gap-2 p-2 md:gap-3 md:p-3`
+- Allow the task name to use `min-w-0` to ensure proper truncation
+- Hide the "POP-UP" / "HIDDEN" badge text on very small screens (keep just the icon)
+- Make the time display more compact on mobile
 
-### `supabase/config.toml`
+### 6. Campaigns Page -- Reduce padding on mobile
 
-- Add `[functions.send-sms]` with `verify_jwt = false`
+**File: `src/pages/Campaigns.tsx`**
 
-## Twilio Connector
+- Reduce horizontal padding: `px-4 md:px-12` instead of `px-6 md:px-12`
+- Reduce hero section margins on mobile
 
-Will use `standard_connectors--connect` with connector_id `twilio` to link the Twilio connection. The edge function will use the gateway pattern (`https://connector-gateway.lovable.dev/twilio/Messages.json`).
+---
 
-## Safety Summary
+## Technical Changes Summary
 
-- Secret code gate prevents casual access
-- Explicit SMS consent checkbox required
-- Client-side session limit (5) + server-side daily limit (20)
-- Auto-disable on send failure
-- Audit log in `sms_log` table (immutable — no UPDATE/DELETE policies)
+| File | Changes |
+|------|---------|
+| `src/components/campaigns/SessionClock.tsx` | Smaller padding, font sizes on mobile |
+| `src/pages/CampaignSession.tsx` | 2x2 clock grid on mobile, wrap header buttons, reduce padding |
+| `src/components/campaigns/CampaignCard.tsx` | `flex-wrap` on action buttons |
+| `src/components/campaigns/SortableTaskItem.tsx` | Tighter mobile spacing, hide badge text on small screens |
+| `src/pages/Campaigns.tsx` | Reduce mobile padding |
+
+---
+
+## Key Principle
+
+All changes use responsive Tailwind classes (e.g., `text-lg md:text-4xl`, `grid-cols-2 md:grid-cols-4`) so desktop remains unchanged while mobile gets a properly spaced layout.

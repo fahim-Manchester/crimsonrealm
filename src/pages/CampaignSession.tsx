@@ -13,6 +13,9 @@ import { AddItemDialog } from "@/components/campaigns/AddItemDialog";
 import { TimerModeSettings } from "@/components/campaigns/TimerModeSettings";
 import { TaskQueuePanel } from "@/components/campaigns/TaskQueuePanel";
 import { QueueProgressBar } from "@/components/campaigns/QueueProgressBar";
+import { ReminderSettingsPanel } from "@/components/campaigns/ReminderSettingsPanel";
+import { DangerousPresenceModal } from "@/components/campaigns/DangerousPresenceModal";
+import { useReminders } from "@/hooks/useReminders";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { toast } from "sonner";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -70,6 +73,16 @@ const CampaignSession = () => {
 
   // Task Queue integration
   const taskQueue = useTaskQueue(campaign?.id ?? null, items);
+
+  // Reminders integration
+  const reminders = useReminders({
+    campaignId: campaign?.id ?? null,
+    isTimerRunning: sessionState.isRunning,
+    onResetSession: async () => {
+      // Reset only the current session (keep campaign history)
+      await startNewSession();
+    },
+  });
 
   // Track pomodoro phase transitions for auto-advance
   const prevPhaseRef = useRef(timerMode.currentPhase);
@@ -173,6 +186,7 @@ const CampaignSession = () => {
         ? nextItem.temporary_name
         : nextItem?.task?.title || nextItem?.project?.name;
       toast.success(`Queue advanced → ${nextTitle || "Next task"}`);
+      reminders.notifyTaskSwitch(nextTitle || "Next task");
     } else {
       toast.success("🎉 Queue complete! All tasks finished.");
     }
@@ -348,6 +362,17 @@ const CampaignSession = () => {
               onUpdatePomodoro={timerMode.updatePomodoroSettings}
               onUpdateUltradian={timerMode.updateUltradianSettings}
             />
+            {reminders.isAvailable && (
+              <ReminderSettingsPanel
+                config={reminders.config}
+                onUpdateConfig={reminders.updateConfig}
+                onUpdateCheckIn={reminders.updateCheckIn}
+                onUpdateDangerous={reminders.updateDangerous}
+                onUpdateTaskSwitch={reminders.updateTaskSwitch}
+                sessionSmsCount={reminders.sessionSmsCount}
+                smsDisabled={reminders.smsDisabled}
+              />
+            )}
             <TaskQueuePanel
               items={items}
               queue={taskQueue.queue}
@@ -583,6 +608,14 @@ const CampaignSession = () => {
         onAddProject={handleAddProject}
         onAddTemporaryItem={handleAddTemporaryItem}
       />
+
+      {/* Dangerous Presence Modal */}
+      {reminders.showPresenceModal && (
+        <DangerousPresenceModal
+          countdown={reminders.presenceCountdown}
+          onConfirm={reminders.confirmPresence}
+        />
+      )}
     </div>
   );
 };
