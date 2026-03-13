@@ -592,7 +592,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setState(s => ({ ...s, activeSource: "main" }));
       setTimeout(() => playQueueAtIndex(0), 0);
     }
-  }, [state, themeTracks, playQueueAtIndex, fadeIn, playTemporaryExternal, getActiveQueue]);
+  }, [state, themeTracks, playQueueAtIndex, fadeIn, playTemporaryExternal, getActiveQueue, startExternalPlayback, isYouTubeUrl, cancelYTFade, setYouTubeVolume, settings.musicVolume]);
 
   const pause = useCallback(() => {
     if (state.useTemporary) { pauseTemporaryExternal(); return; }
