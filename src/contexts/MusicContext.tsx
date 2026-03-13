@@ -567,9 +567,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     // Resume external track
     if (state.currentTrackIsExternal && state.currentTrack) {
-      // Re-load iframe (can't really "resume" an iframe embed)
-      const embedUrl = getEmbedUrl(state.currentTrack.url);
-      if (embedUrl && iframeRef.current) iframeRef.current.src = embedUrl;
+      if (isYouTubeUrl(state.currentTrack.url) && iframeRef.current?.contentWindow && iframeRef.current.src) {
+        cancelYTFade();
+        iframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+        iframeRef.current.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*');
+        setYouTubeVolume(Math.max(0, Math.min(100, Math.round(settings.musicVolume * 100))));
+      } else {
+        startExternalPlayback(state.currentTrack.url);
+      }
       setState(s => ({ ...s, isPlaying: true }));
       return;
     }
