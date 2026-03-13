@@ -1,94 +1,120 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { THEMES, ThemeTrack } from "@/lib/themes";
+import { useMusicPreferences, MusicPrefsData } from "@/hooks/useMusicPreferences";
+import { useAuth } from "@/hooks/useAuth";
+
+// ---- Types ----
+
+export interface QueueItem {
+  id: string;
+  title: string;
+  url: string;
+  isInternal?: boolean;
+}
+
+export type LoopMode = "none" | "queue" | "one";
 
 export interface MusicSettings {
-  playOnlyWhenTimerRunning: boolean;
-  playOnlyWhenTimerPaused: boolean;
-  playOutsideCampaigns: boolean;
+  musicVolume: number;
+  tickingVolume: number;
   clockTickingEnabled: boolean;
-  volume: number;
-  loopTrack: boolean;
+  loopMode: LoopMode;
+  downtimeLoopMode: LoopMode;
+  playOnlyWhenTimerRunning: boolean;
+  downtimeEnabled: boolean;
+  playOutsideCampaigns: boolean;
 }
 
 interface MusicState {
   isPlaying: boolean;
-  currentTrack: ThemeTrack | null;
+  currentTrack: QueueItem | null;
   currentTrackIndex: number;
-  queue: ThemeTrack[];
-  externalPlaylistUrl: string;
-  useExternalPlaylist: boolean;
-  externalIsPlaying: boolean;
-  playAllMode: boolean;
+  activeSource: "main" | "downtime" | "temporary";
+  // External/temporary playback
+  temporaryUrl: string;
+  temporaryIsPlaying: boolean;
+  useTemporary: boolean;
 }
 
 interface MusicContextType {
   state: MusicState;
   settings: MusicSettings;
   themeTracks: ThemeTrack[];
+  mainQueue: QueueItem[];
+  downtimeQueue: QueueItem[];
+  // Playback
   play: () => void;
   pause: () => void;
   toggle: () => void;
-  playTrack: (track: ThemeTrack, index?: number) => void;
+  playQueueItem: (item: QueueItem, index: number, source?: "main" | "downtime") => void;
   nextTrack: () => void;
   prevTrack: () => void;
-  setQueue: (tracks: ThemeTrack[]) => void;
-  setVolume: (volume: number) => void;
+  // Queue management
+  setMainQueue: (items: QueueItem[]) => void;
+  setDowntimeQueue: (items: QueueItem[]) => void;
+  addToMainQueue: (item: QueueItem) => void;
+  addToDowntimeQueue: (item: QueueItem) => void;
+  removeFromMainQueue: (index: number) => void;
+  removeFromDowntimeQueue: (index: number) => void;
+  reorderMainQueue: (from: number, to: number) => void;
+  reorderDowntimeQueue: (from: number, to: number) => void;
+  // Settings
+  setMusicVolume: (volume: number) => void;
+  setTickingVolume: (volume: number) => void;
   updateSettings: (settings: Partial<MusicSettings>) => void;
-  setExternalPlaylist: (url: string) => void;
-  clearExternalPlaylist: () => void;
-  playExternal: () => void;
-  pauseExternal: () => void;
+  // Temporary playback
+  playTemporary: (url: string) => void;
+  clearTemporary: () => void;
+  pauseTemporary: () => void;
+  resumeTemporary: () => void;
+  // Campaign timer
   notifyCampaignTimerState: (isRunning: boolean, isInCampaign: boolean) => void;
+  // Helpers
   getEmbedUrl: (url: string) => string | null;
-  setPlayAllMode: (mode: boolean) => void;
 }
 
-const STORAGE_KEY = "realm-music-settings";
-const STATE_STORAGE_KEY = "realm-music-state";
+// ---- Constants ----
 
 const FADE_DURATION = 1200;
 const FADE_INTERVAL = 20;
 const FADE_STEPS = FADE_DURATION / FADE_INTERVAL;
 
 const defaultSettings: MusicSettings = {
-  playOnlyWhenTimerRunning: false,
-  playOnlyWhenTimerPaused: false,
-  playOutsideCampaigns: true,
+  musicVolume: 0.7,
+  tickingVolume: 0.5,
   clockTickingEnabled: false,
-  volume: 0.7,
-  loopTrack: true,
+  loopMode: "queue",
+  downtimeLoopMode: "queue",
+  playOnlyWhenTimerRunning: false,
+  downtimeEnabled: false,
+  playOutsideCampaigns: true,
 };
 
 const defaultState: MusicState = {
   isPlaying: false,
   currentTrack: null,
   currentTrackIndex: -1,
-  queue: [],
-  externalPlaylistUrl: "",
-  useExternalPlaylist: false,
-  externalIsPlaying: false,
-  playAllMode: false,
+  activeSource: "main",
+  temporaryUrl: "",
+  temporaryIsPlaying: false,
+  useTemporary: false,
 };
 
 const MusicContext = createContext<MusicContextType | undefined>(undefined);
 
-function getEmbedUrl(url: string): string | null {
+// ---- Helpers ----
+
+export function getEmbedUrl(url: string): string | null {
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
     const videoId = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1];
     const playlistId = url.match(/[?&]list=([^"&?\/\s]+)/)?.[1];
-    if (playlistId) {
-      return `https://www.youtube.com/embed/videoseries?list=${playlistId}&autoplay=1&enablejsapi=1`;
-    }
-    if (videoId) {
-      return `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1`;
-    }
+    if (playlistId) return `https://www.youtube.com/embed/videoseries?list=${playlistId}&autoplay=1&enablejsapi=1`;
+    if (videoId) return `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1`;
   }
   if (url.includes("spotify.com")) {
     const match = url.match(/spotify\.com\/(playlist|album|track)\/([a-zA-Z0-9]+)/);
-    if (match) {
-      return `https://open.spotify.com/embed/${match[1]}/${match[2]}?theme=0`;
-    }
+    if (match) return `https://open.spotify.com/embed/${match[1]}/${match[2]}?theme=0`;
   }
   if (url.includes("soundcloud.com")) {
     return `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&auto_play=true&hide_related=true&show_comments=false&show_user=true&show_reposts=false&visual=true`;
@@ -96,37 +122,29 @@ function getEmbedUrl(url: string): string | null {
   return null;
 }
 
-// Pleasant clock ticking sound — soft woodblock/metronome style
 function createTickingEngine() {
   let audioCtx: AudioContext | null = null;
   let intervalId: ReturnType<typeof setInterval> | null = null;
+  let gainLevel = 0.12;
 
   function tick() {
     if (!audioCtx) return;
     const t = audioCtx.currentTime;
-
-    // Create a short noise burst filtered to sound like a soft wooden tick
-    const bufferSize = audioCtx.sampleRate * 0.02; // 20ms
+    const bufferSize = audioCtx.sampleRate * 0.02;
     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
       data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 8);
     }
-
     const source = audioCtx.createBufferSource();
     source.buffer = buffer;
-
-    // Bandpass filter to give it a woody "tok" character
     const filter = audioCtx.createBiquadFilter();
     filter.type = "bandpass";
     filter.frequency.setValueAtTime(1800, t);
     filter.Q.setValueAtTime(2, t);
-
-    // Gentle gain envelope
     const gain = audioCtx.createGain();
-    gain.gain.setValueAtTime(0.12, t);
+    gain.gain.setValueAtTime(gainLevel, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
-
     source.connect(filter);
     filter.connect(gain);
     gain.connect(audioCtx.destination);
@@ -143,10 +161,10 @@ function createTickingEngine() {
       intervalId = setInterval(tick, 1000);
     },
     stop() {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
+      if (intervalId) { clearInterval(intervalId); intervalId = null; }
+    },
+    setVolume(vol: number) {
+      gainLevel = vol * 0.24; // scale 0-1 to 0-0.24
     },
     destroy() {
       this.stop();
@@ -156,105 +174,79 @@ function createTickingEngine() {
   };
 }
 
+// ---- Provider ----
+
 export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { theme } = useTheme();
+  const { user } = useAuth();
+  const userId = user?.id;
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const tickingEngineRef = useRef<ReturnType<typeof createTickingEngine> | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const savedExternalUrlRef = useRef<string>("");
   const fadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const targetVolumeRef = useRef<number>(0.7);
-  
+  const targetVolumeRef = useRef(0.7);
+  const youtubeFadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hydratedRef = useRef(false);
+
+  const { loadLocal, loadFromDB, saveToDB } = useMusicPreferences(userId);
+
   const [settings, setSettings] = useState<MusicSettings>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      return stored ? { ...defaultSettings, ...JSON.parse(stored) } : defaultSettings;
-    } catch {
-      return defaultSettings;
-    }
+    const cached = loadLocal();
+    return { ...defaultSettings, ...cached.settings };
   });
-
-  const [state, setState] = useState<MusicState>(() => {
-    try {
-      const stored = localStorage.getItem(STATE_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return { ...defaultState, ...parsed, isPlaying: false, externalIsPlaying: false };
-      }
-      return defaultState;
-    } catch {
-      return defaultState;
-    }
-  });
-
+  const [mainQueue, setMainQueue] = useState<QueueItem[]>(() => loadLocal().main_queue || []);
+  const [downtimeQueue, setDowntimeQueue] = useState<QueueItem[]>(() => loadLocal().downtime_queue || []);
+  const [state, setState] = useState<MusicState>(defaultState);
   const [campaignState, setCampaignState] = useState({ isRunning: false, isInCampaign: false });
 
   const themeTracks = THEMES[theme]?.tracks || [];
 
   // Keep targetVolumeRef in sync
+  useEffect(() => { targetVolumeRef.current = settings.musicVolume; }, [settings.musicVolume]);
+
+  // Update ticking volume
+  useEffect(() => { tickingEngineRef.current?.setVolume(settings.tickingVolume); }, [settings.tickingVolume]);
+
+  // ---- Hydrate from DB on login ----
   useEffect(() => {
-    targetVolumeRef.current = settings.volume;
-  }, [settings.volume]);
-
-  // --- Fade helpers ---
-  const cancelFade = useCallback(() => {
-    if (fadeIntervalRef.current) {
-      clearInterval(fadeIntervalRef.current);
-      fadeIntervalRef.current = null;
-    }
-  }, []);
-
-  const fadeOut = useCallback((callback?: () => void) => {
-    cancelFade();
-    const audio = audioRef.current;
-    if (!audio) { callback?.(); return; }
-
-    const startVol = audio.volume;
-    if (startVol <= 0) { callback?.(); return; }
-    const step = startVol / FADE_STEPS;
-    let currentStep = 0;
-
-    fadeIntervalRef.current = setInterval(() => {
-      currentStep++;
-      const newVol = Math.max(0, startVol - step * currentStep);
-      audio.volume = newVol;
-      if (currentStep >= FADE_STEPS) {
-        cancelFade();
-        audio.volume = 0;
-        callback?.();
+    if (!userId || hydratedRef.current) return;
+    hydratedRef.current = true;
+    loadFromDB().then(dbData => {
+      if (dbData) {
+        setSettings(s => ({ ...s, ...dbData.settings }));
+        if (dbData.main_queue.length > 0) setMainQueue(dbData.main_queue);
+        if (dbData.downtime_queue.length > 0) setDowntimeQueue(dbData.downtime_queue);
       }
-    }, FADE_INTERVAL);
-  }, [cancelFade]);
+    });
+  }, [userId, loadFromDB]);
 
-  const fadeIn = useCallback(() => {
-    cancelFade();
-    const audio = audioRef.current;
-    if (!audio) return;
+  // Reset hydration flag on logout
+  useEffect(() => {
+    if (!userId) hydratedRef.current = false;
+  }, [userId]);
 
-    const target = targetVolumeRef.current;
-    audio.volume = 0;
-    const step = target / FADE_STEPS;
-    let currentStep = 0;
+  // ---- Persist to DB on changes ----
+  const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!userId) return;
+    // Debounce a bit to avoid rapid saves
+    if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
+    persistTimeoutRef.current = setTimeout(() => {
+      const prefs: MusicPrefsData = { settings, main_queue: mainQueue, downtime_queue: downtimeQueue };
+      saveToDB(prefs);
+    }, 500);
+  }, [settings, mainQueue, downtimeQueue, userId, saveToDB]);
 
-    fadeIntervalRef.current = setInterval(() => {
-      currentStep++;
-      const newVol = Math.min(target, step * currentStep);
-      audio.volume = newVol;
-      if (currentStep >= FADE_STEPS) {
-        cancelFade();
-        audio.volume = target;
-      }
-    }, FADE_INTERVAL);
-  }, [cancelFade]);
-
-  // Initialize audio elements
+  // ---- Audio init ----
   useEffect(() => {
     if (!audioRef.current) {
       audioRef.current = new Audio();
-      audioRef.current.volume = settings.volume;
+      audioRef.current.volume = settings.musicVolume;
     }
     if (!tickingEngineRef.current) {
       tickingEngineRef.current = createTickingEngine();
+      tickingEngineRef.current.setVolume(settings.tickingVolume);
     }
     return () => {
       cancelFade();
@@ -262,397 +254,349 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, []);
 
-  // Persist settings
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  }, [settings]);
+  // ---- Fade helpers ----
+  const cancelFade = useCallback(() => {
+    if (fadeIntervalRef.current) { clearInterval(fadeIntervalRef.current); fadeIntervalRef.current = null; }
+  }, []);
 
-  // Persist state
-  useEffect(() => {
-    const { isPlaying, externalIsPlaying, ...stateToStore } = state;
-    localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(stateToStore));
-  }, [state]);
+  const fadeOut = useCallback((callback?: () => void) => {
+    cancelFade();
+    const audio = audioRef.current;
+    if (!audio) { callback?.(); return; }
+    const startVol = audio.volume;
+    if (startVol <= 0) { callback?.(); return; }
+    const step = startVol / FADE_STEPS;
+    let cur = 0;
+    fadeIntervalRef.current = setInterval(() => {
+      cur++;
+      audio.volume = Math.max(0, startVol - step * cur);
+      if (cur >= FADE_STEPS) { cancelFade(); audio.volume = 0; callback?.(); }
+    }, FADE_INTERVAL);
+  }, [cancelFade]);
 
-  // Update volume (only when not fading)
-  useEffect(() => {
-    if (audioRef.current && !fadeIntervalRef.current) {
-      audioRef.current.volume = settings.volume;
-    }
-  }, [settings.volume]);
+  const fadeIn = useCallback(() => {
+    cancelFade();
+    const audio = audioRef.current;
+    if (!audio) return;
+    const target = targetVolumeRef.current;
+    audio.volume = 0;
+    const step = target / FADE_STEPS;
+    let cur = 0;
+    fadeIntervalRef.current = setInterval(() => {
+      cur++;
+      audio.volume = Math.min(target, step * cur);
+      if (cur >= FADE_STEPS) { cancelFade(); audio.volume = target; }
+    }, FADE_INTERVAL);
+  }, [cancelFade]);
 
-  // Handle track ending
+  // ---- YouTube helpers ----
+  const isYouTubeUrl = useCallback((url: string) => url.includes("youtube.com") || url.includes("youtu.be"), []);
+
+  const setYouTubeVolume = useCallback((vol: number) => {
+    iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [vol] }), "*");
+  }, []);
+
+  const cancelYTFade = useCallback(() => {
+    if (youtubeFadeIntervalRef.current) { clearInterval(youtubeFadeIntervalRef.current); youtubeFadeIntervalRef.current = null; }
+  }, []);
+
+  const fadeOutYT = useCallback((cb?: () => void) => {
+    cancelYTFade();
+    let cur = 0;
+    const step = 100 / FADE_STEPS;
+    youtubeFadeIntervalRef.current = setInterval(() => {
+      cur++;
+      setYouTubeVolume(Math.max(0, 100 - step * cur));
+      if (cur >= FADE_STEPS) { cancelYTFade(); setYouTubeVolume(0); cb?.(); }
+    }, FADE_INTERVAL);
+  }, [cancelYTFade, setYouTubeVolume]);
+
+  const fadeInYT = useCallback(() => {
+    cancelYTFade();
+    setYouTubeVolume(0);
+    let cur = 0;
+    const step = 100 / FADE_STEPS;
+    youtubeFadeIntervalRef.current = setInterval(() => {
+      cur++;
+      setYouTubeVolume(Math.min(100, step * cur));
+      if (cur >= FADE_STEPS) { cancelYTFade(); setYouTubeVolume(100); }
+    }, FADE_INTERVAL);
+  }, [cancelYTFade, setYouTubeVolume]);
+
+  // ---- Volume sync ----
+  useEffect(() => {
+    if (audioRef.current && !fadeIntervalRef.current) audioRef.current.volume = settings.musicVolume;
+  }, [settings.musicVolume]);
+
+  // ---- Active queue helper ----
+  const getActiveQueue = useCallback(() => {
+    return state.activeSource === "downtime" ? downtimeQueue : mainQueue;
+  }, [state.activeSource, mainQueue, downtimeQueue]);
+
+  const getActiveLoopMode = useCallback(() => {
+    return state.activeSource === "downtime" ? settings.downtimeLoopMode : settings.loopMode;
+  }, [state.activeSource, settings.loopMode, settings.downtimeLoopMode]);
+
+  // ---- Track ending ----
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-
     const handleEnded = () => {
-      if (state.playAllMode && state.queue.length > 1) {
-        // Play All mode: always advance sequentially
-        const nextIndex = state.currentTrackIndex + 1;
-        if (nextIndex < state.queue.length) {
-          fadeInTrackAtIndex(nextIndex);
-        } else if (settings.loopTrack) {
-          // Wrap around to first track
-          fadeInTrackAtIndex(0);
-        } else {
-          setState(s => ({ ...s, isPlaying: false }));
-        }
-      } else if (settings.loopTrack && state.currentTrackIndex >= 0) {
-        // Single track loop
-        fadeInTrackAtIndex(state.currentTrackIndex);
-      } else if (state.queue.length > 0) {
-        const nextIndex = state.currentTrackIndex + 1;
-        if (nextIndex < state.queue.length) {
-          fadeInTrackAtIndex(nextIndex);
-        } else {
-          setState(s => ({ ...s, isPlaying: false }));
-        }
+      const queue = getActiveQueue();
+      const loopMode = getActiveLoopMode();
+
+      if (loopMode === "one" && state.currentTrackIndex >= 0) {
+        // Replay same track
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+        return;
+      }
+
+      const nextIndex = state.currentTrackIndex + 1;
+      if (nextIndex < queue.length) {
+        playQueueAtIndex(nextIndex);
+      } else if (loopMode === "queue" && queue.length > 0) {
+        playQueueAtIndex(0);
+      } else {
+        setState(s => ({ ...s, isPlaying: false }));
       }
     };
-
     audio.addEventListener("ended", handleEnded);
     return () => audio.removeEventListener("ended", handleEnded);
-  }, [state.queue, state.currentTrackIndex, settings.loopTrack, state.playAllMode]);
+  }, [state.currentTrackIndex, state.activeSource, mainQueue, downtimeQueue, settings.loopMode, settings.downtimeLoopMode]);
 
-  // --- YouTube volume control helpers ---
-  const isYouTubeUrl = useCallback((url: string) => {
-    return url.includes("youtube.com") || url.includes("youtu.be");
-  }, []);
+  // ---- Internal playback ----
+  const playQueueAtIndex = useCallback((index: number) => {
+    const queue = state.activeSource === "downtime" ? downtimeQueue : mainQueue;
+    const track = queue[index];
+    if (!track || !audioRef.current) return;
+    audioRef.current.src = track.url;
+    audioRef.current.volume = 0;
+    audioRef.current.play().catch(console.error);
+    fadeIn();
+    setState(s => ({ ...s, currentTrack: track, currentTrackIndex: index, isPlaying: true, useTemporary: false }));
+  }, [mainQueue, downtimeQueue, state.activeSource, fadeIn]);
 
-  const setYouTubeVolume = useCallback((volume: number) => {
-    if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: "command", func: "setVolume", args: [volume] }),
-        "*"
-      );
-    }
-  }, []);
-
-  const youtubeFadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const cancelYouTubeFade = useCallback(() => {
-    if (youtubeFadeIntervalRef.current) {
-      clearInterval(youtubeFadeIntervalRef.current);
-      youtubeFadeIntervalRef.current = null;
-    }
-  }, []);
-
-  const fadeOutYouTube = useCallback((callback?: () => void) => {
-    cancelYouTubeFade();
-    let currentStep = 0;
-    const step = 100 / FADE_STEPS;
-
-    youtubeFadeIntervalRef.current = setInterval(() => {
-      currentStep++;
-      const newVol = Math.max(0, 100 - step * currentStep);
-      setYouTubeVolume(newVol);
-      if (currentStep >= FADE_STEPS) {
-        cancelYouTubeFade();
-        setYouTubeVolume(0);
-        callback?.();
-      }
-    }, FADE_INTERVAL);
-  }, [cancelYouTubeFade, setYouTubeVolume]);
-
-  const fadeInYouTube = useCallback(() => {
-    cancelYouTubeFade();
-    setYouTubeVolume(0);
-    let currentStep = 0;
-    const step = 100 / FADE_STEPS;
-
-    youtubeFadeIntervalRef.current = setInterval(() => {
-      currentStep++;
-      const newVol = Math.min(100, step * currentStep);
-      setYouTubeVolume(newVol);
-      if (currentStep >= FADE_STEPS) {
-        cancelYouTubeFade();
-        setYouTubeVolume(100);
-      }
-    }, FADE_INTERVAL);
-  }, [cancelYouTubeFade, setYouTubeVolume]);
-
-  // --- External playlist control helpers ---
-  const playExternal = useCallback(() => {
-    if (!state.externalPlaylistUrl) return;
-    const embedUrl = getEmbedUrl(state.externalPlaylistUrl);
+  // ---- Temporary (external) playback ----
+  const playTemporaryExternal = useCallback((url: string) => {
+    const embedUrl = getEmbedUrl(url);
     if (!embedUrl) return;
-
-    if (isYouTubeUrl(state.externalPlaylistUrl)) {
+    if (isYouTubeUrl(url)) {
       if (iframeRef.current?.contentWindow) {
         setYouTubeVolume(0);
         iframeRef.current.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
-        fadeInYouTube();
+        fadeInYT();
       }
     } else {
       if (iframeRef.current && !iframeRef.current.src) {
         iframeRef.current.src = embedUrl;
       }
     }
-    setState(s => ({ ...s, externalIsPlaying: true }));
-  }, [state.externalPlaylistUrl, isYouTubeUrl, setYouTubeVolume, fadeInYouTube]);
+    setState(s => ({ ...s, temporaryIsPlaying: true }));
+  }, [isYouTubeUrl, setYouTubeVolume, fadeInYT]);
 
-  const pauseExternal = useCallback(() => {
-    if (!state.externalPlaylistUrl) return;
-
-    if (isYouTubeUrl(state.externalPlaylistUrl)) {
-      fadeOutYouTube(() => {
-        if (iframeRef.current?.contentWindow) {
-          iframeRef.current.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
-        }
+  const pauseTemporaryExternal = useCallback(() => {
+    const url = state.temporaryUrl;
+    if (!url) return;
+    if (isYouTubeUrl(url)) {
+      fadeOutYT(() => {
+        iframeRef.current?.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
       });
     } else {
-      if (iframeRef.current) {
-        savedExternalUrlRef.current = iframeRef.current.src;
-        iframeRef.current.src = "";
-      }
+      if (iframeRef.current) iframeRef.current.src = "";
     }
-    setState(s => ({ ...s, externalIsPlaying: false }));
-  }, [state.externalPlaylistUrl, isYouTubeUrl, fadeOutYouTube]);
+    setState(s => ({ ...s, temporaryIsPlaying: false }));
+  }, [state.temporaryUrl, isYouTubeUrl, fadeOutYT]);
 
-  // Handle campaign timer state changes
+  // ---- Campaign timer state ----
   useEffect(() => {
     const { isRunning, isInCampaign } = campaignState;
-    
-    // Clock ticking sound (separate from music)
+
+    // Ticking
     if (settings.clockTickingEnabled && isRunning && tickingEngineRef.current) {
       tickingEngineRef.current.start();
-    } else if (tickingEngineRef.current) {
-      tickingEngineRef.current.stop();
+    } else {
+      tickingEngineRef.current?.stop();
     }
 
-    // Auto play/pause for INTERNAL tracks
-    if (!state.useExternalPlaylist) {
-      if (settings.playOnlyWhenTimerRunning) {
-        if (isRunning && isInCampaign && !state.isPlaying && state.currentTrack) {
-          audioRef.current?.play().catch(() => {});
-          fadeIn();
-          setState(s => ({ ...s, isPlaying: true }));
-        } else if (!isRunning && state.isPlaying) {
-          fadeOut(() => {
-            audioRef.current?.pause();
-          });
-          setState(s => ({ ...s, isPlaying: false }));
+    // Skip music management for temporary playback
+    if (state.useTemporary) return;
+
+    // Auto-switch between main and downtime queues
+    if (settings.playOnlyWhenTimerRunning && settings.downtimeEnabled && isInCampaign) {
+      if (isRunning) {
+        // Switch to main queue
+        if (state.activeSource !== "main") {
+          fadeOut(() => { audioRef.current?.pause(); });
+          setState(s => ({ ...s, activeSource: "main", isPlaying: false }));
+          // Auto-play main queue
+          if (mainQueue.length > 0) {
+            setTimeout(() => {
+              const idx = state.currentTrack && mainQueue.some(q => q.id === state.currentTrack!.id) 
+                ? mainQueue.findIndex(q => q.id === state.currentTrack!.id) : 0;
+              playQueueAtIndex(Math.max(0, idx));
+            }, 100);
+          }
+        } else if (!state.isPlaying && mainQueue.length > 0) {
+          playQueueAtIndex(state.currentTrackIndex >= 0 ? state.currentTrackIndex : 0);
+        }
+      } else {
+        // Switch to downtime queue
+        if (state.activeSource !== "downtime") {
+          fadeOut(() => { audioRef.current?.pause(); });
+          setState(s => ({ ...s, activeSource: "downtime", isPlaying: false }));
+          if (downtimeQueue.length > 0) {
+            setTimeout(() => playQueueAtIndex(0), 100);
+          }
+        } else if (!state.isPlaying && downtimeQueue.length > 0) {
+          playQueueAtIndex(state.currentTrackIndex >= 0 ? state.currentTrackIndex : 0);
         }
       }
-
-      if (settings.playOnlyWhenTimerPaused) {
-        if (!isRunning && isInCampaign && !state.isPlaying && state.currentTrack) {
-          audioRef.current?.play().catch(() => {});
-          fadeIn();
-          setState(s => ({ ...s, isPlaying: true }));
-        } else if (isRunning && state.isPlaying) {
-          fadeOut(() => {
-            audioRef.current?.pause();
-          });
-          setState(s => ({ ...s, isPlaying: false }));
-        }
-      }
-
-      if (!settings.playOutsideCampaigns && !isInCampaign && state.isPlaying) {
-        fadeOut(() => {
-          audioRef.current?.pause();
-        });
+    } else if (settings.playOnlyWhenTimerRunning && !settings.downtimeEnabled) {
+      // Only play when timer running, no downtime
+      if (isRunning && isInCampaign && !state.isPlaying && mainQueue.length > 0) {
+        playQueueAtIndex(state.currentTrackIndex >= 0 ? state.currentTrackIndex : 0);
+      } else if (!isRunning && state.isPlaying) {
+        fadeOut(() => { audioRef.current?.pause(); });
         setState(s => ({ ...s, isPlaying: false }));
       }
     }
 
-    // Auto play/pause for EXTERNAL playlists
-    if (state.useExternalPlaylist && state.externalPlaylistUrl) {
-      if (settings.playOnlyWhenTimerRunning) {
-        if (isRunning && isInCampaign && !state.externalIsPlaying) {
-          playExternal();
-        } else if (!isRunning && state.externalIsPlaying) {
-          pauseExternal();
-        }
-      }
-
-      if (settings.playOnlyWhenTimerPaused) {
-        if (!isRunning && isInCampaign && !state.externalIsPlaying) {
-          playExternal();
-        } else if (isRunning && state.externalIsPlaying) {
-          pauseExternal();
-        }
-      }
-
-      if (!settings.playOutsideCampaigns && !isInCampaign && state.externalIsPlaying) {
-        pauseExternal();
-      }
+    if (!settings.playOutsideCampaigns && !isInCampaign && state.isPlaying) {
+      fadeOut(() => { audioRef.current?.pause(); });
+      setState(s => ({ ...s, isPlaying: false }));
     }
-  }, [campaignState, settings, state.currentTrack, state.useExternalPlaylist, state.externalPlaylistUrl, state.isPlaying, state.externalIsPlaying, playExternal, pauseExternal, fadeIn, fadeOut]);
+  }, [campaignState, settings.playOnlyWhenTimerRunning, settings.downtimeEnabled, settings.playOutsideCampaigns, settings.clockTickingEnabled]);
 
-  // Play a track at index with fade-in
-  const fadeInTrackAtIndex = useCallback((index: number) => {
-    const track = state.queue[index];
-    if (!track || !audioRef.current) return;
-
-    audioRef.current.src = track.url;
-    audioRef.current.volume = 0;
-    audioRef.current.play().catch(console.error);
-    fadeIn();
-    setState(s => ({
-      ...s,
-      currentTrack: track,
-      currentTrackIndex: index,
-      isPlaying: true,
-    }));
-  }, [state.queue, fadeIn]);
-
-  // Direct play (no fade, used internally)
-  const playTrackAtIndex = useCallback((index: number) => {
-    const track = state.queue[index];
-    if (!track || !audioRef.current) return;
-
-    audioRef.current.src = track.url;
-    audioRef.current.play().catch(console.error);
-    setState(s => ({
-      ...s,
-      currentTrack: track,
-      currentTrackIndex: index,
-      isPlaying: true,
-    }));
-  }, [state.queue]);
-
+  // ---- Public API ----
   const play = useCallback(() => {
-    if (state.useExternalPlaylist) {
-      playExternal();
+    if (state.useTemporary) {
+      playTemporaryExternal(state.temporaryUrl);
       return;
     }
-    
+    const queue = getActiveQueue();
     if (state.currentTrack && audioRef.current) {
-      audioRef.current.play().catch(console.error);
+      audioRef.current.play().catch(() => {});
       fadeIn();
       setState(s => ({ ...s, isPlaying: true }));
-    } else if (state.queue.length > 0) {
-      fadeInTrackAtIndex(0);
+    } else if (queue.length > 0) {
+      playQueueAtIndex(0);
     } else if (themeTracks.length > 0) {
-      setState(s => ({ ...s, queue: themeTracks }));
-      setTimeout(() => fadeInTrackAtIndex(0), 0);
+      // Auto-load theme tracks into main queue
+      const items: QueueItem[] = themeTracks.map(t => ({ id: t.id, title: t.title, url: t.url, isInternal: true }));
+      setMainQueue(items);
+      setState(s => ({ ...s, activeSource: "main" }));
+      setTimeout(() => playQueueAtIndex(0), 0);
     }
-  }, [state.currentTrack, state.queue, state.useExternalPlaylist, themeTracks, fadeInTrackAtIndex, playExternal, fadeIn]);
+  }, [state, themeTracks, playQueueAtIndex, fadeIn, playTemporaryExternal, getActiveQueue]);
 
   const pause = useCallback(() => {
-    if (state.useExternalPlaylist) {
-      pauseExternal();
-      return;
-    }
-    fadeOut(() => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-    });
+    if (state.useTemporary) { pauseTemporaryExternal(); return; }
+    fadeOut(() => { audioRef.current?.pause(); });
     setState(s => ({ ...s, isPlaying: false }));
-  }, [state.useExternalPlaylist, pauseExternal, fadeOut]);
+  }, [state.useTemporary, pauseTemporaryExternal, fadeOut]);
 
   const toggle = useCallback(() => {
-    if (state.useExternalPlaylist) {
-      if (state.externalIsPlaying) pauseExternal();
-      else playExternal();
+    if (state.useTemporary) {
+      state.temporaryIsPlaying ? pauseTemporaryExternal() : playTemporaryExternal(state.temporaryUrl);
       return;
     }
-    if (state.isPlaying) {
-      pause();
-    } else {
-      play();
+    state.isPlaying ? pause() : play();
+  }, [state, play, pause, playTemporaryExternal, pauseTemporaryExternal]);
+
+  const playQueueItem = useCallback((item: QueueItem, index: number, source?: "main" | "downtime") => {
+    if (source && source !== state.activeSource) {
+      setState(s => ({ ...s, activeSource: source }));
     }
-  }, [state.isPlaying, state.useExternalPlaylist, state.externalIsPlaying, play, pause, playExternal, pauseExternal]);
-
-  const playTrack = useCallback((track: ThemeTrack, index?: number) => {
     if (!audioRef.current) return;
-
-    const switchToTrack = () => {
-      audioRef.current!.src = track.url;
+    const doSwitch = () => {
+      audioRef.current!.src = item.url;
       audioRef.current!.volume = 0;
       audioRef.current!.play().catch(console.error);
       fadeIn();
       setState(s => ({
         ...s,
-        currentTrack: track,
-        currentTrackIndex: index ?? s.queue.findIndex(t => t.id === track.id),
+        currentTrack: item,
+        currentTrackIndex: index,
         isPlaying: true,
-        useExternalPlaylist: false,
+        useTemporary: false,
+        activeSource: source || s.activeSource,
       }));
     };
-
-    // If currently playing, fade out first then switch
     if (state.isPlaying && audioRef.current && !audioRef.current.paused) {
-      fadeOut(switchToTrack);
+      fadeOut(doSwitch);
     } else {
-      switchToTrack();
+      doSwitch();
     }
-  }, [state.isPlaying, fadeOut, fadeIn]);
+  }, [state.isPlaying, state.activeSource, fadeOut, fadeIn]);
 
   const nextTrack = useCallback(() => {
-    if (state.queue.length === 0) return;
-    const nextIndex = (state.currentTrackIndex + 1) % state.queue.length;
-    
+    const queue = getActiveQueue();
+    if (queue.length === 0) return;
+    const nextIdx = (state.currentTrackIndex + 1) % queue.length;
     if (state.isPlaying && audioRef.current && !audioRef.current.paused) {
-      fadeOut(() => fadeInTrackAtIndex(nextIndex));
+      fadeOut(() => playQueueAtIndex(nextIdx));
     } else {
-      fadeInTrackAtIndex(nextIndex);
+      playQueueAtIndex(nextIdx);
     }
-  }, [state.queue, state.currentTrackIndex, state.isPlaying, fadeOut, fadeInTrackAtIndex]);
+  }, [getActiveQueue, state.currentTrackIndex, state.isPlaying, fadeOut, playQueueAtIndex]);
 
   const prevTrack = useCallback(() => {
-    if (state.queue.length === 0) return;
-    const prevIndex = state.currentTrackIndex <= 0 ? state.queue.length - 1 : state.currentTrackIndex - 1;
-    
+    const queue = getActiveQueue();
+    if (queue.length === 0) return;
+    const prevIdx = state.currentTrackIndex <= 0 ? queue.length - 1 : state.currentTrackIndex - 1;
     if (state.isPlaying && audioRef.current && !audioRef.current.paused) {
-      fadeOut(() => fadeInTrackAtIndex(prevIndex));
+      fadeOut(() => playQueueAtIndex(prevIdx));
     } else {
-      fadeInTrackAtIndex(prevIndex);
+      playQueueAtIndex(prevIdx);
     }
-  }, [state.queue, state.currentTrackIndex, state.isPlaying, fadeOut, fadeInTrackAtIndex]);
+  }, [getActiveQueue, state.currentTrackIndex, state.isPlaying, fadeOut, playQueueAtIndex]);
 
-  const setQueue = useCallback((tracks: ThemeTrack[]) => {
-    setState(s => ({ ...s, queue: tracks }));
-  }, []);
+  // Queue management
+  const addToMainQueue = useCallback((item: QueueItem) => setMainQueue(q => [...q, item]), []);
+  const addToDowntimeQueue = useCallback((item: QueueItem) => setDowntimeQueue(q => [...q, item]), []);
+  const removeFromMainQueue = useCallback((index: number) => setMainQueue(q => q.filter((_, i) => i !== index)), []);
+  const removeFromDowntimeQueue = useCallback((index: number) => setDowntimeQueue(q => q.filter((_, i) => i !== index)), []);
 
-  const setVolume = useCallback((volume: number) => {
-    setSettings(s => ({ ...s, volume }));
-  }, []);
+  const reorderQueue = (queue: QueueItem[], from: number, to: number): QueueItem[] => {
+    const arr = [...queue];
+    const [item] = arr.splice(from, 1);
+    arr.splice(to, 0, item);
+    return arr;
+  };
+  const reorderMainQueue = useCallback((from: number, to: number) => setMainQueue(q => reorderQueue(q, from, to)), []);
+  const reorderDowntimeQueue = useCallback((from: number, to: number) => setDowntimeQueue(q => reorderQueue(q, from, to)), []);
 
-  const updateSettings = useCallback((newSettings: Partial<MusicSettings>) => {
-    setSettings(s => ({ ...s, ...newSettings }));
-  }, []);
+  const setMusicVolume = useCallback((vol: number) => setSettings(s => ({ ...s, musicVolume: vol })), []);
+  const setTickingVolume = useCallback((vol: number) => setSettings(s => ({ ...s, tickingVolume: vol })), []);
+  const updateSettingsFn = useCallback((newSettings: Partial<MusicSettings>) => setSettings(s => ({ ...s, ...newSettings })), []);
 
-  const setPlayAllMode = useCallback((mode: boolean) => {
-    setState(s => ({ ...s, playAllMode: mode }));
-  }, []);
-
-  const setExternalPlaylist = useCallback((url: string) => {
-    if (audioRef.current) {
-      fadeOut(() => {
-        audioRef.current?.pause();
-      });
+  // Temporary playback
+  const playTemporary = useCallback((url: string) => {
+    // Fade out internal audio without clearing queue
+    if (audioRef.current && state.isPlaying) {
+      fadeOut(() => { audioRef.current?.pause(); });
     }
     setState(s => ({
       ...s,
-      externalPlaylistUrl: url,
-      useExternalPlaylist: true,
+      temporaryUrl: url,
+      useTemporary: true,
+      temporaryIsPlaying: true,
       isPlaying: false,
-      externalIsPlaying: true,
     }));
-  }, [fadeOut]);
+  }, [state.isPlaying, fadeOut]);
 
-  const clearExternalPlaylist = useCallback(() => {
-    if (iframeRef.current) {
-      iframeRef.current.src = "";
-    }
-    setState(s => ({
-      ...s,
-      externalPlaylistUrl: "",
-      useExternalPlaylist: false,
-      externalIsPlaying: false,
-    }));
+  const clearTemporary = useCallback(() => {
+    if (iframeRef.current) iframeRef.current.src = "";
+    setState(s => ({ ...s, temporaryUrl: "", useTemporary: false, temporaryIsPlaying: false }));
   }, []);
 
   const notifyCampaignTimerState = useCallback((isRunning: boolean, isInCampaign: boolean) => {
     setCampaignState({ isRunning, isInCampaign });
   }, []);
 
-  const currentEmbedUrl = state.useExternalPlaylist && state.externalPlaylistUrl 
-    ? getEmbedUrl(state.externalPlaylistUrl) 
-    : null;
+  // Embed URL for temporary playback
+  const currentEmbedUrl = state.useTemporary && state.temporaryUrl ? getEmbedUrl(state.temporaryUrl) : null;
 
   return (
     <MusicContext.Provider
@@ -660,22 +604,31 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         state,
         settings,
         themeTracks,
+        mainQueue,
+        downtimeQueue,
         play,
         pause,
         toggle,
-        playTrack,
+        playQueueItem,
         nextTrack,
         prevTrack,
-        setQueue,
-        setVolume,
-        updateSettings,
-        setExternalPlaylist,
-        clearExternalPlaylist,
-        playExternal,
-        pauseExternal,
+        setMainQueue,
+        setDowntimeQueue,
+        addToMainQueue,
+        addToDowntimeQueue,
+        removeFromMainQueue,
+        removeFromDowntimeQueue,
+        reorderMainQueue,
+        reorderDowntimeQueue,
+        setMusicVolume,
+        setTickingVolume,
+        updateSettings: updateSettingsFn,
+        playTemporary,
+        clearTemporary,
+        pauseTemporary: pauseTemporaryExternal,
+        resumeTemporary: () => playTemporaryExternal(state.temporaryUrl),
         notifyCampaignTimerState,
         getEmbedUrl,
-        setPlayAllMode,
       }}
     >
       {children}
@@ -684,15 +637,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ref={iframeRef}
           src={currentEmbedUrl}
           allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-          style={{
-            position: "fixed",
-            top: -9999,
-            left: -9999,
-            width: 1,
-            height: 1,
-            border: "none",
-            pointerEvents: "none",
-          }}
+          style={{ position: "fixed", top: -9999, left: -9999, width: 1, height: 1, border: "none", pointerEvents: "none" }}
           tabIndex={-1}
           aria-hidden="true"
         />
@@ -703,8 +648,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 export const useMusic = () => {
   const context = useContext(MusicContext);
-  if (!context) {
-    throw new Error("useMusic must be used within MusicProvider");
-  }
+  if (!context) throw new Error("useMusic must be used within MusicProvider");
   return context;
 };
