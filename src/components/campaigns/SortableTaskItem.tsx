@@ -2,7 +2,7 @@ import { useState, forwardRef } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, CheckCircle, Ban, Clock, Edit2, X, Check, CornerLeftUp, Bookmark } from "lucide-react";
+import { GripVertical, CheckCircle, Ban, Clock, Edit2, X, Check, CornerLeftUp, Bookmark, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,14 +10,17 @@ import type { CampaignItem } from "@/hooks/useCampaigns";
 
 interface SortableTaskItemProps {
   item: CampaignItem;
-  isCurrentTask: boolean; // Is this the task being timed?
-  isSelected?: boolean; // Is this the task selected in UI? (separate from timing)
-  isTimerRunning?: boolean; // NEW: Is any timer currently running?
+  isCurrentTask: boolean;
+  isSelected?: boolean;
+  isTimerRunning?: boolean;
   onSelect: () => void;
   onUncheck?: () => void;
   onUpdateTime?: (minutes: number) => void;
   onUnembed?: () => void;
   onMarkPermanent?: () => void;
+  onSetTargetTime?: (seconds: number) => void;
+  onRemoveTargetTime?: () => void;
+  targetTimeSeconds?: number;
   sessionTimeSeconds?: number;
   indentLevel?: number;
   displayTimeSeconds?: number;
