@@ -2,7 +2,7 @@ import { useState, forwardRef } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, CheckCircle, Ban, Clock, Edit2, X, Check, CornerLeftUp, Bookmark } from "lucide-react";
+import { GripVertical, CheckCircle, Ban, Clock, Edit2, X, Check, CornerLeftUp, Bookmark, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,14 +10,17 @@ import type { CampaignItem } from "@/hooks/useCampaigns";
 
 interface SortableTaskItemProps {
   item: CampaignItem;
-  isCurrentTask: boolean; // Is this the task being timed?
-  isSelected?: boolean; // Is this the task selected in UI? (separate from timing)
-  isTimerRunning?: boolean; // NEW: Is any timer currently running?
+  isCurrentTask: boolean;
+  isSelected?: boolean;
+  isTimerRunning?: boolean;
   onSelect: () => void;
   onUncheck?: () => void;
   onUpdateTime?: (minutes: number) => void;
   onUnembed?: () => void;
   onMarkPermanent?: () => void;
+  onSetTargetTime?: (seconds: number) => void;
+  onRemoveTargetTime?: () => void;
+  targetTimeSeconds?: number;
   sessionTimeSeconds?: number;
   indentLevel?: number;
   displayTimeSeconds?: number;
@@ -47,14 +50,17 @@ const formatTimeShort = (seconds: number | null) => {
 
 export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps>(function SortableTaskItem({ 
   item, 
-  isCurrentTask, // Task being timed
-  isSelected, // Task selected in UI (may differ from isCurrentTask)
-  isTimerRunning = false, // NEW: Is any timer currently running globally?
+  isCurrentTask,
+  isSelected,
+  isTimerRunning = false,
   onSelect, 
   onUncheck,
   onUpdateTime,
   onUnembed,
   onMarkPermanent,
+  onSetTargetTime,
+  onRemoveTargetTime,
+  targetTimeSeconds,
   sessionTimeSeconds = 0,
   indentLevel = 0,
   displayTimeSeconds,
@@ -66,6 +72,8 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
   const isHighlighted = isSelected !== undefined ? isSelected : isCurrentTask;
   const [isEditingTime, setIsEditingTime] = useState(false);
   const [editTimeValue, setEditTimeValue] = useState("");
+  const [isEditingTarget, setIsEditingTarget] = useState(false);
+  const [targetEditValue, setTargetEditValue] = useState("");
 
   const {
     attributes,
@@ -272,6 +280,58 @@ export const SortableTaskItem = forwardRef<HTMLDivElement, SortableTaskItemProps
             </span>
           )}
         </span>
+
+        {/* Target time display/edit */}
+        <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+          {isEditingTarget ? (
+            <div className="flex items-center gap-1">
+              <Input
+                type="number"
+                min={1}
+                value={targetEditValue}
+                onChange={(e) => setTargetEditValue(e.target.value)}
+                className="w-14 h-6 text-xs px-1"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const mins = parseInt(targetEditValue) || 0;
+                    if (mins > 0 && onSetTargetTime) onSetTargetTime(mins * 60);
+                    setIsEditingTarget(false);
+                  }
+                  if (e.key === "Escape") setIsEditingTarget(false);
+                }}
+              />
+              <span className="text-[10px] text-muted-foreground">min</span>
+              <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => {
+                const mins = parseInt(targetEditValue) || 0;
+                if (mins > 0 && onSetTargetTime) onSetTargetTime(mins * 60);
+                setIsEditingTarget(false);
+              }}>
+                <Check className="w-3 h-3 text-accent" />
+              </Button>
+              {targetTimeSeconds && onRemoveTargetTime && (
+                <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => {
+                  onRemoveTargetTime();
+                  setIsEditingTarget(false);
+                }}>
+                  <X className="w-3 h-3 text-destructive" />
+                </Button>
+              )}
+            </div>
+          ) : (
+            <button
+              className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors px-1"
+              onClick={() => {
+                setTargetEditValue(targetTimeSeconds ? Math.round(targetTimeSeconds / 60).toString() : "");
+                setIsEditingTarget(true);
+              }}
+              title="Set target time"
+            >
+              <Target className="w-3 h-3" />
+              {targetTimeSeconds ? `${Math.round(targetTimeSeconds / 60)}m` : "—"}
+            </button>
+          )}
+        </div>
 
         {/* Time display/edit */}
         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>

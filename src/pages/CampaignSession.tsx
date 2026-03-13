@@ -558,6 +558,9 @@ const CampaignSession = () => {
                 onUncheckItem={handleUncheckItem}
                 onUpdateTime={handleUpdateItemTime}
                 onMarkPermanent={handleMarkPermanent}
+                onSetTargetTime={taskQueue.setTargetTime}
+                onRemoveTargetTime={taskQueue.removeTargetTime}
+                targetTimes={taskQueue.settings.targetTimes}
                 timedTaskId={sessionState.timedTaskId}
                 selectedTaskId={sessionState.selectedTaskId}
                 isTimerRunning={sessionState.isRunning}

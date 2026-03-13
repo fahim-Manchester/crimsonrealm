@@ -77,9 +77,12 @@ interface QuestItemListProps {
   onUncheckItem: (itemId: string) => void;
   onUpdateTime: (itemId: string, minutes: number) => void;
   onMarkPermanent?: (itemId: string) => void;
-  timedTaskId?: string | null; // NEW: Which task is actually being timed
-  selectedTaskId?: string | null; // NEW: Which task is selected in UI
-  isTimerRunning?: boolean; // NEW: Is any timer currently running?
+  onSetTargetTime?: (itemId: string, seconds: number) => void;
+  onRemoveTargetTime?: (itemId: string) => void;
+  targetTimes?: Record<string, number>;
+  timedTaskId?: string | null;
+  selectedTaskId?: string | null;
+  isTimerRunning?: boolean;
 }
 
 export function QuestItemList({
@@ -92,6 +95,9 @@ export function QuestItemList({
   onUncheckItem,
   onUpdateTime,
   onMarkPermanent,
+  onSetTargetTime,
+  onRemoveTargetTime,
+  targetTimes = {},
   timedTaskId,
   selectedTaskId,
   isTimerRunning = false,
@@ -203,6 +209,9 @@ export function QuestItemList({
                   onUnembed={indentLevel > 0 ? () => onSetParent(item.id, null) : undefined}
                   onUpdateTime={(mins) => onUpdateTime(item.id, mins)}
                   onMarkPermanent={item.is_temporary && onMarkPermanent ? () => onMarkPermanent(item.id) : undefined}
+                  onSetTargetTime={onSetTargetTime ? (secs) => onSetTargetTime(item.id, secs) : undefined}
+                  onRemoveTargetTime={onRemoveTargetTime ? () => onRemoveTargetTime(item.id) : undefined}
+                  targetTimeSeconds={targetTimes[item.id]}
                   sessionTimeSeconds={itemSessionTimes[item.id] || 0}
                   nestDropId={nestId(item.id)}
                   isDragActive={isDragActive}
