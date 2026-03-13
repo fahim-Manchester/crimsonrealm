@@ -247,7 +247,6 @@ const CampaignSession = () => {
               onUpdateChess={timerMode.updateChessSettings}
               onUpdatePomodoro={timerMode.updatePomodoroSettings}
             />
-            <MusicPlayer />
             <Button
               variant="outline"
               size="sm"

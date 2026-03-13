@@ -46,7 +46,6 @@ const PageLayout = ({ children, title, subtitle }: PageLayoutProps) => {
           </Link>
           <nav className="flex items-center gap-4">
             <InstallButton />
-            <MusicPlayer />
             <ThemeSwitcher />
             <Link to="/home" className="font-crimson text-muted-foreground hover:text-foreground transition-colors">
               {labels.homeName}

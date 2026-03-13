@@ -36,6 +36,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <GlobalMusicBar />
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<Index />} />
