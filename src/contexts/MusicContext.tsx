@@ -31,6 +31,8 @@ interface MusicState {
   currentTrack: QueueItem | null;
   currentTrackIndex: number;
   activeSource: "main" | "downtime" | "temporary";
+  // Whether the current queue track uses iframe (external) vs audio element (internal)
+  currentTrackIsExternal: boolean;
   // External/temporary playback
   temporaryUrl: string;
   temporaryIsPlaying: boolean;
@@ -97,6 +99,7 @@ const defaultState: MusicState = {
   currentTrack: null,
   currentTrackIndex: -1,
   activeSource: "main",
+  currentTrackIsExternal: false,
   temporaryUrl: "",
   temporaryIsPlaying: false,
   useTemporary: false,
@@ -105,6 +108,11 @@ const defaultState: MusicState = {
 const MusicContext = createContext<MusicContextType | undefined>(undefined);
 
 // ---- Helpers ----
+
+function isExternalUrl(url: string): boolean {
+  return url.includes("youtube.com") || url.includes("youtu.be") ||
+    url.includes("spotify.com") || url.includes("soundcloud.com");
+}
 
 export function getEmbedUrl(url: string): string | null {
   if (url.includes("youtube.com") || url.includes("youtu.be")) {
@@ -394,16 +402,40 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => audio.removeEventListener("ended", handleEnded);
   }, [state.currentTrackIndex, state.activeSource, state.useTemporary, temporaryInternalQueue, temporaryInternalIndex, mainQueue, downtimeQueue, settings.loopMode, settings.downtimeLoopMode]);
 
-  // ---- Internal playback ----
+  // ---- Queue playback (handles both internal audio & external iframe) ----
   const playQueueAtIndex = useCallback((index: number) => {
     const queue = state.activeSource === "downtime" ? downtimeQueue : mainQueue;
     const track = queue[index];
-    if (!track || !audioRef.current) return;
-    audioRef.current.src = track.url;
-    audioRef.current.volume = 0;
-    audioRef.current.play().catch(console.error);
-    fadeIn();
-    setState(s => ({ ...s, currentTrack: track, currentTrackIndex: index, isPlaying: true, useTemporary: false }));
+    if (!track) return;
+
+    const external = isExternalUrl(track.url);
+
+    if (external) {
+      // Stop any internal audio
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
+      // Load the embed URL into the iframe
+      const embedUrl = getEmbedUrl(track.url);
+      if (embedUrl && iframeRef.current) {
+        iframeRef.current.src = embedUrl;
+      }
+      setState(s => ({
+        ...s, currentTrack: track, currentTrackIndex: index, isPlaying: true,
+        useTemporary: false, currentTrackIsExternal: true,
+      }));
+    } else {
+      // Stop iframe if it was playing
+      if (iframeRef.current) iframeRef.current.src = "";
+      // Play via audio element
+      if (!audioRef.current) return;
+      audioRef.current.src = track.url;
+      audioRef.current.volume = 0;
+      audioRef.current.play().catch(console.error);
+      fadeIn();
+      setState(s => ({
+        ...s, currentTrack: track, currentTrackIndex: index, isPlaying: true,
+        useTemporary: false, currentTrackIsExternal: false,
+      }));
+    }
   }, [mainQueue, downtimeQueue, state.activeSource, fadeIn]);
 
   // ---- Temporary (external) playback ----
@@ -500,7 +532,21 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // ---- Public API ----
   const play = useCallback(() => {
     if (state.useTemporary) {
-      playTemporaryExternal(state.temporaryUrl);
+      if (temporaryInternalQueue.length > 0 && audioRef.current) {
+        audioRef.current.play().catch(() => {});
+        fadeIn();
+        setState(s => ({ ...s, temporaryIsPlaying: true }));
+      } else {
+        playTemporaryExternal(state.temporaryUrl);
+      }
+      return;
+    }
+    // Resume external track
+    if (state.currentTrackIsExternal && state.currentTrack) {
+      // Re-load iframe (can't really "resume" an iframe embed)
+      const embedUrl = getEmbedUrl(state.currentTrack.url);
+      if (embedUrl && iframeRef.current) iframeRef.current.src = embedUrl;
+      setState(s => ({ ...s, isPlaying: true }));
       return;
     }
     const queue = getActiveQueue();
@@ -521,9 +567,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const pause = useCallback(() => {
     if (state.useTemporary) { pauseTemporaryExternal(); return; }
+    if (state.currentTrackIsExternal) {
+      // Stop iframe
+      if (iframeRef.current) iframeRef.current.src = "";
+      setState(s => ({ ...s, isPlaying: false }));
+      return;
+    }
     fadeOut(() => { audioRef.current?.pause(); });
     setState(s => ({ ...s, isPlaying: false }));
-  }, [state.useTemporary, pauseTemporaryExternal, fadeOut]);
+  }, [state.useTemporary, state.currentTrackIsExternal, pauseTemporaryExternal, fadeOut]);
 
   const toggle = useCallback(() => {
     if (state.useTemporary) {
@@ -537,27 +589,45 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (source && source !== state.activeSource) {
       setState(s => ({ ...s, activeSource: source }));
     }
-    if (!audioRef.current) return;
+    const external = isExternalUrl(item.url);
+
     const doSwitch = () => {
-      audioRef.current!.src = item.url;
-      audioRef.current!.volume = 0;
-      audioRef.current!.play().catch(console.error);
-      fadeIn();
-      setState(s => ({
-        ...s,
-        currentTrack: item,
-        currentTrackIndex: index,
-        isPlaying: true,
-        useTemporary: false,
-        activeSource: source || s.activeSource,
-      }));
+      if (external) {
+        // Stop internal audio
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
+        const embedUrl = getEmbedUrl(item.url);
+        if (embedUrl && iframeRef.current) {
+          iframeRef.current.src = embedUrl;
+        }
+        setState(s => ({
+          ...s, currentTrack: item, currentTrackIndex: index, isPlaying: true,
+          useTemporary: false, currentTrackIsExternal: true,
+          activeSource: source || s.activeSource,
+        }));
+      } else {
+        // Stop iframe
+        if (iframeRef.current) iframeRef.current.src = "";
+        if (!audioRef.current) return;
+        audioRef.current.src = item.url;
+        audioRef.current.volume = 0;
+        audioRef.current.play().catch(console.error);
+        fadeIn();
+        setState(s => ({
+          ...s, currentTrack: item, currentTrackIndex: index, isPlaying: true,
+          useTemporary: false, currentTrackIsExternal: false,
+          activeSource: source || s.activeSource,
+        }));
+      }
     };
-    if (state.isPlaying && audioRef.current && !audioRef.current.paused) {
+    if (state.isPlaying && !external && audioRef.current && !audioRef.current.paused) {
       fadeOut(doSwitch);
+    } else if (state.isPlaying && state.currentTrackIsExternal) {
+      // Currently playing external, just switch
+      doSwitch();
     } else {
       doSwitch();
     }
-  }, [state.isPlaying, state.activeSource, fadeOut, fadeIn]);
+  }, [state.isPlaying, state.activeSource, state.currentTrackIsExternal, fadeOut, fadeIn]);
 
   const nextTrack = useCallback(() => {
     const queue = getActiveQueue();
@@ -660,8 +730,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setCampaignState({ isRunning, isInCampaign });
   }, []);
 
-  // Embed URL for temporary playback
-  const currentEmbedUrl = state.useTemporary && state.temporaryUrl ? getEmbedUrl(state.temporaryUrl) : null;
+  // Embed URL — for temporary external playback OR queue external tracks
+  const currentEmbedUrl = state.useTemporary && state.temporaryUrl
+    ? getEmbedUrl(state.temporaryUrl)
+    : null;
+  // Note: queue external tracks set iframe.src directly in playQueueAtIndex/playQueueItem,
+  // so we always render the iframe element (hidden).
 
   return (
     <MusicContext.Provider
@@ -706,16 +780,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }}
     >
       {children}
-      {currentEmbedUrl && (
-        <iframe
-          ref={iframeRef}
-          src={currentEmbedUrl}
-          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-          style={{ position: "fixed", top: -9999, left: -9999, width: 1, height: 1, border: "none", pointerEvents: "none" }}
-          tabIndex={-1}
-          aria-hidden="true"
-        />
-      )}
+      {/* Always render iframe for external playback (queue or temporary) */}
+      <iframe
+        ref={iframeRef}
+        src={currentEmbedUrl || ""}
+        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+        style={{ position: "fixed", top: -9999, left: -9999, width: 1, height: 1, border: "none", pointerEvents: "none" }}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
     </MusicContext.Provider>
   );
 };
