@@ -99,6 +99,7 @@ const defaultState: MusicState = {
   currentTrack: null,
   currentTrackIndex: -1,
   activeSource: "main",
+  currentTrackIsExternal: false,
   temporaryUrl: "",
   temporaryIsPlaying: false,
   useTemporary: false,
