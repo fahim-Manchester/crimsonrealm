@@ -657,7 +657,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } else {
       doSwitch();
     }
-  }, [state.isPlaying, state.activeSource, state.currentTrackIsExternal, fadeOut, fadeIn]);
+  }, [state.isPlaying, state.activeSource, state.currentTrackIsExternal, fadeOut, fadeIn, startExternalPlayback]);
 
   const nextTrack = useCallback(() => {
     const queue = getActiveQueue();
