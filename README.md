@@ -2,6 +2,12 @@
 
 ## Project info
 
+## FOR GDG JUDGES: Heya, I am so sorry for the inconvenience here. I am super new to Github and building apps. I am a bit worried if I may have done anything wrong and kindly ask that no changes be made to my app as I put a lot of effort into it and it is something I wish to use for personal use.
+
+You can find a more structured app description in the Youtube description for my submission here: 
+
+Here's the link to my app: https://crimsonrealm.lovable.app
+
 **URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
 
 ## How can I edit this code?
