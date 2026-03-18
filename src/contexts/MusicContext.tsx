@@ -819,6 +819,30 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setCampaignState({ isRunning, isInCampaign });
   }, []);
 
+  const notifyMenuOpen = useCallback((open: boolean) => {
+    menuOpenRef.current = open;
+    // When menu closes, apply settings restrictions
+    if (!open) {
+      const { isRunning, isInCampaign } = campaignState;
+      
+      if (state.useTemporary && state.temporaryIsPlaying) {
+        // Check if music should stop based on settings
+        const shouldStop = 
+          (!settings.playOutsideCampaigns && !isInCampaign) ||
+          (settings.playOnlyWhenTimerRunning && isInCampaign && !isRunning);
+        
+        if (shouldStop) {
+          if (temporaryInternalQueue.length > 0 && audioRef.current) {
+            fadeOut(() => { audioRef.current?.pause(); });
+          } else {
+            pauseTemporaryExternal();
+          }
+          setState(s => ({ ...s, temporaryIsPlaying: false }));
+        }
+      }
+    }
+  }, [campaignState, state.useTemporary, state.temporaryIsPlaying, temporaryInternalQueue, settings.playOutsideCampaigns, settings.playOnlyWhenTimerRunning, fadeOut, pauseTemporaryExternal]);
+
   // Manage iframe src imperatively to prevent React re-renders from clearing it
   useEffect(() => {
     if (!iframeRef.current) return;
