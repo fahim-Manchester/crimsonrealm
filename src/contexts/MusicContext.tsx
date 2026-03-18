@@ -73,6 +73,8 @@ interface MusicContextType {
   resumeTemporary: () => void;
   // Campaign timer
   notifyCampaignTimerState: (isRunning: boolean, isInCampaign: boolean) => void;
+  // Menu open state (suppresses auto-pause for preview)
+  notifyMenuOpen: (open: boolean) => void;
   // Helpers
   getEmbedUrl: (url: string) => string | null;
 }
