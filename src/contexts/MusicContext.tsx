@@ -641,10 +641,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [state, themeTracks, playQueueAtIndex, fadeIn, fadeInYT, playTemporaryExternal, getActiveQueue, startExternalPlayback, isYouTubeUrl, cancelYTFade, setYouTubeVolume, settings.musicVolume]);
 
   const pause = useCallback(() => {
-    if (state.useTemporary) { pauseTemporaryExternal(); return; }
+    if (state.useTemporary) {
+      // Handle internal temporary tracks (theme tracks via audioRef)
+      if (temporaryInternalQueue.length > 0 && audioRef.current) {
+        fadeOut(() => { audioRef.current?.pause(); });
+        setState(s => ({ ...s, temporaryIsPlaying: false }));
+      } else {
+        pauseTemporaryExternal();
+      }
+      return;
+    }
     if (state.currentTrackIsExternal) {
       if (state.currentTrack && isYouTubeUrl(state.currentTrack.url)) {
-        // Fade out YouTube then pause
         fadeOutYT(() => {
           iframeRef.current?.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
         });
@@ -656,7 +664,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     fadeOut(() => { audioRef.current?.pause(); });
     setState(s => ({ ...s, isPlaying: false }));
-  }, [state.useTemporary, state.currentTrackIsExternal, state.currentTrack, pauseTemporaryExternal, fadeOut, fadeOutYT, isYouTubeUrl]);
+  }, [state.useTemporary, state.currentTrackIsExternal, state.currentTrack, temporaryInternalQueue, pauseTemporaryExternal, fadeOut, fadeOutYT, isYouTubeUrl]);
 
   const toggle = useCallback(() => {
     if (state.useTemporary) {
