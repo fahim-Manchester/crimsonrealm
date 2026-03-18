@@ -524,15 +524,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Handle temporary (Quick Play) playback with timer
     if (state.useTemporary) {
+      // Skip auto-pause/resume when music menu is open (allow preview)
+      if (menuOpenRef.current) return;
+
       if (settings.playOnlyWhenTimerRunning && isInCampaign) {
         if (!isRunning && (state.temporaryIsPlaying || (temporaryInternalQueue.length > 0 && audioRef.current && !audioRef.current.paused))) {
           // Timer paused → fade out and pause Quick Play
           if (temporaryInternalQueue.length > 0 && audioRef.current) {
             fadeOut(() => { audioRef.current?.pause(); });
-            setState(s => ({ ...s, temporaryIsPlaying: false }));
           } else {
             pauseTemporaryExternal();
           }
+          setState(s => ({ ...s, temporaryIsPlaying: false }));
         } else if (isRunning && !state.temporaryIsPlaying && (temporaryInternalQueue.length > 0 || state.temporaryUrl)) {
           // Timer resumed → resume Quick Play
           if (temporaryInternalQueue.length > 0 && audioRef.current) {
@@ -547,10 +550,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!settings.playOutsideCampaigns && !isInCampaign && state.temporaryIsPlaying) {
         if (temporaryInternalQueue.length > 0 && audioRef.current) {
           fadeOut(() => { audioRef.current?.pause(); });
-          setState(s => ({ ...s, temporaryIsPlaying: false }));
         } else {
           pauseTemporaryExternal();
         }
+        setState(s => ({ ...s, temporaryIsPlaying: false }));
       }
       return;
     }
