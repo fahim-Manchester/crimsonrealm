@@ -124,7 +124,7 @@ const MusicPlayer = () => {
 
   return (
     <>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(v) => { setOpen(v); notifyMenuOpen(v); }}>
         <DialogTrigger asChild>
           <div>
             <MusicButton onClick={() => setOpen(true)} />
