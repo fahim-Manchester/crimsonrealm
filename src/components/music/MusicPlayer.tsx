@@ -176,7 +176,7 @@ const MusicPlayer = () => {
                     className="h-8 w-8"
                     onClick={() => {
                       if (state.useTemporary) {
-                        state.temporaryIsPlaying ? pauseTemporary() : resumeTemporary();
+                        state.temporaryIsPlaying ? pause() : resumeTemporary();
                       } else {
                         toggle();
                       }
