@@ -49,6 +49,7 @@ const MusicPlayer = () => {
     reorderMainQueue, reorderDowntimeQueue,
     setMusicVolume, setTickingVolume, updateSettings,
     playTemporary, playTemporaryInternal, clearTemporary, pauseTemporary, resumeTemporary,
+    notifyMenuOpen,
   } = useMusic();
 
   const { items: savedItems, loading: savedLoading, addItem: saveItem, updateItem: updateSavedItem, uploadAndSave: uploadItem } = useSavedMusic(user?.id);
