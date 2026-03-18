@@ -73,6 +73,8 @@ interface MusicContextType {
   resumeTemporary: () => void;
   // Campaign timer
   notifyCampaignTimerState: (isRunning: boolean, isInCampaign: boolean) => void;
+  // Menu open state (suppresses auto-pause for preview)
+  notifyMenuOpen: (open: boolean) => void;
   // Helpers
   getEmbedUrl: (url: string) => string | null;
 }
@@ -211,6 +213,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [temporaryInternalQueue, setTemporaryInternalQueue] = useState<QueueItem[]>([]);
   const [temporaryInternalIndex, setTemporaryInternalIndex] = useState(0);
   const [campaignState, setCampaignState] = useState({ isRunning: false, isInCampaign: false });
+  const menuOpenRef = useRef(false);
 
   const themeTracks = THEMES[theme]?.tracks || [];
 
@@ -521,15 +524,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Handle temporary (Quick Play) playback with timer
     if (state.useTemporary) {
+      // Skip auto-pause/resume when music menu is open (allow preview)
+      if (menuOpenRef.current) return;
+
       if (settings.playOnlyWhenTimerRunning && isInCampaign) {
         if (!isRunning && (state.temporaryIsPlaying || (temporaryInternalQueue.length > 0 && audioRef.current && !audioRef.current.paused))) {
           // Timer paused → fade out and pause Quick Play
           if (temporaryInternalQueue.length > 0 && audioRef.current) {
             fadeOut(() => { audioRef.current?.pause(); });
-            setState(s => ({ ...s, temporaryIsPlaying: false }));
           } else {
             pauseTemporaryExternal();
           }
+          setState(s => ({ ...s, temporaryIsPlaying: false }));
         } else if (isRunning && !state.temporaryIsPlaying && (temporaryInternalQueue.length > 0 || state.temporaryUrl)) {
           // Timer resumed → resume Quick Play
           if (temporaryInternalQueue.length > 0 && audioRef.current) {
@@ -544,10 +550,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!settings.playOutsideCampaigns && !isInCampaign && state.temporaryIsPlaying) {
         if (temporaryInternalQueue.length > 0 && audioRef.current) {
           fadeOut(() => { audioRef.current?.pause(); });
-          setState(s => ({ ...s, temporaryIsPlaying: false }));
         } else {
           pauseTemporaryExternal();
         }
+        setState(s => ({ ...s, temporaryIsPlaying: false }));
       }
       return;
     }
@@ -638,10 +644,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [state, themeTracks, playQueueAtIndex, fadeIn, fadeInYT, playTemporaryExternal, getActiveQueue, startExternalPlayback, isYouTubeUrl, cancelYTFade, setYouTubeVolume, settings.musicVolume]);
 
   const pause = useCallback(() => {
-    if (state.useTemporary) { pauseTemporaryExternal(); return; }
+    if (state.useTemporary) {
+      // Handle internal temporary tracks (theme tracks via audioRef)
+      if (temporaryInternalQueue.length > 0 && audioRef.current) {
+        fadeOut(() => { audioRef.current?.pause(); });
+        setState(s => ({ ...s, temporaryIsPlaying: false }));
+      } else {
+        pauseTemporaryExternal();
+      }
+      return;
+    }
     if (state.currentTrackIsExternal) {
       if (state.currentTrack && isYouTubeUrl(state.currentTrack.url)) {
-        // Fade out YouTube then pause
         fadeOutYT(() => {
           iframeRef.current?.contentWindow?.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
         });
@@ -653,15 +667,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     fadeOut(() => { audioRef.current?.pause(); });
     setState(s => ({ ...s, isPlaying: false }));
-  }, [state.useTemporary, state.currentTrackIsExternal, state.currentTrack, pauseTemporaryExternal, fadeOut, fadeOutYT, isYouTubeUrl]);
+  }, [state.useTemporary, state.currentTrackIsExternal, state.currentTrack, temporaryInternalQueue, pauseTemporaryExternal, fadeOut, fadeOutYT, isYouTubeUrl]);
 
   const toggle = useCallback(() => {
     if (state.useTemporary) {
-      state.temporaryIsPlaying ? pauseTemporaryExternal() : playTemporaryExternal(state.temporaryUrl);
+      state.temporaryIsPlaying ? pause() : play();
       return;
     }
     state.isPlaying ? pause() : play();
-  }, [state, play, pause, playTemporaryExternal, pauseTemporaryExternal]);
+  }, [state, play, pause]);
 
   const playQueueItem = useCallback((item: QueueItem, index: number, source?: "main" | "downtime") => {
     if (source && source !== state.activeSource) {
@@ -805,6 +819,30 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setCampaignState({ isRunning, isInCampaign });
   }, []);
 
+  const notifyMenuOpen = useCallback((open: boolean) => {
+    menuOpenRef.current = open;
+    // When menu closes, apply settings restrictions
+    if (!open) {
+      const { isRunning, isInCampaign } = campaignState;
+      
+      if (state.useTemporary && state.temporaryIsPlaying) {
+        // Check if music should stop based on settings
+        const shouldStop = 
+          (!settings.playOutsideCampaigns && !isInCampaign) ||
+          (settings.playOnlyWhenTimerRunning && isInCampaign && !isRunning);
+        
+        if (shouldStop) {
+          if (temporaryInternalQueue.length > 0 && audioRef.current) {
+            fadeOut(() => { audioRef.current?.pause(); });
+          } else {
+            pauseTemporaryExternal();
+          }
+          setState(s => ({ ...s, temporaryIsPlaying: false }));
+        }
+      }
+    }
+  }, [campaignState, state.useTemporary, state.temporaryIsPlaying, temporaryInternalQueue, settings.playOutsideCampaigns, settings.playOnlyWhenTimerRunning, fadeOut, pauseTemporaryExternal]);
+
   // Manage iframe src imperatively to prevent React re-renders from clearing it
   useEffect(() => {
     if (!iframeRef.current) return;
@@ -857,6 +895,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
         },
         notifyCampaignTimerState,
+        notifyMenuOpen,
         getEmbedUrl,
       }}
     >

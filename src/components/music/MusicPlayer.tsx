@@ -49,6 +49,7 @@ const MusicPlayer = () => {
     reorderMainQueue, reorderDowntimeQueue,
     setMusicVolume, setTickingVolume, updateSettings,
     playTemporary, playTemporaryInternal, clearTemporary, pauseTemporary, resumeTemporary,
+    notifyMenuOpen,
   } = useMusic();
 
   const { items: savedItems, loading: savedLoading, addItem: saveItem, updateItem: updateSavedItem, uploadAndSave: uploadItem } = useSavedMusic(user?.id);
@@ -123,7 +124,7 @@ const MusicPlayer = () => {
 
   return (
     <>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(v) => { setOpen(v); notifyMenuOpen(v); }}>
         <DialogTrigger asChild>
           <div>
             <MusicButton onClick={() => setOpen(true)} />
@@ -175,7 +176,7 @@ const MusicPlayer = () => {
                     className="h-8 w-8"
                     onClick={() => {
                       if (state.useTemporary) {
-                        state.temporaryIsPlaying ? pauseTemporary() : resumeTemporary();
+                        state.temporaryIsPlaying ? pause() : resumeTemporary();
                       } else {
                         toggle();
                       }
