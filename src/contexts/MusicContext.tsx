@@ -213,6 +213,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [temporaryInternalQueue, setTemporaryInternalQueue] = useState<QueueItem[]>([]);
   const [temporaryInternalIndex, setTemporaryInternalIndex] = useState(0);
   const [campaignState, setCampaignState] = useState({ isRunning: false, isInCampaign: false });
+  const menuOpenRef = useRef(false);
 
   const themeTracks = THEMES[theme]?.tracks || [];
 
