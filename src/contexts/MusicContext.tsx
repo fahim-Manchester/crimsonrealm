@@ -671,11 +671,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const toggle = useCallback(() => {
     if (state.useTemporary) {
-      state.temporaryIsPlaying ? pauseTemporaryExternal() : playTemporaryExternal(state.temporaryUrl);
+      state.temporaryIsPlaying ? pause() : play();
       return;
     }
     state.isPlaying ? pause() : play();
-  }, [state, play, pause, playTemporaryExternal, pauseTemporaryExternal]);
+  }, [state, play, pause]);
 
   const playQueueItem = useCallback((item: QueueItem, index: number, source?: "main" | "downtime") => {
     if (source && source !== state.activeSource) {
