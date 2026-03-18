@@ -895,6 +895,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
         },
         notifyCampaignTimerState,
+        notifyMenuOpen,
         getEmbedUrl,
       }}
     >
