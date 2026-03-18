@@ -199,6 +199,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const fadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const targetVolumeRef = useRef(0.7);
   const youtubeFadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const youtubeVolumeRef = useRef(Math.round(defaultSettings.musicVolume * 100));
   const hydratedRef = useRef(false);
 
   const { loadLocal, loadFromDB, saveToDB } = useMusicPreferences(userId);
@@ -217,8 +218,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const themeTracks = THEMES[theme]?.tracks || [];
 
-  // Keep targetVolumeRef in sync
-  useEffect(() => { targetVolumeRef.current = settings.musicVolume; }, [settings.musicVolume]);
+  // Keep target volume refs in sync
+  useEffect(() => {
+    targetVolumeRef.current = settings.musicVolume;
+    youtubeVolumeRef.current = Math.max(0, Math.min(100, Math.round(settings.musicVolume * 100)));
+  }, [settings.musicVolume]);
 
   // Update ticking volume
   useEffect(() => { tickingEngineRef.current?.setVolume(settings.tickingVolume); }, [settings.tickingVolume]);
@@ -308,7 +312,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const isYouTubeUrl = useCallback((url: string) => url.includes("youtube.com") || url.includes("youtu.be"), []);
 
   const setYouTubeVolume = useCallback((vol: number) => {
-    iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [vol] }), "*");
+    const clamped = Math.max(0, Math.min(100, Math.round(vol)));
+    youtubeVolumeRef.current = clamped;
+    iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [clamped] }), "*");
   }, []);
 
   const cancelYTFade = useCallback(() => {
@@ -317,11 +323,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const fadeOutYT = useCallback((cb?: () => void) => {
     cancelYTFade();
+    const startVol = youtubeVolumeRef.current;
+    if (startVol <= 0) {
+      setYouTubeVolume(0);
+      cb?.();
+      return;
+    }
+
     let cur = 0;
-    const step = 100 / FADE_STEPS;
+    const step = startVol / FADE_STEPS;
     youtubeFadeIntervalRef.current = setInterval(() => {
       cur++;
-      setYouTubeVolume(Math.max(0, 100 - step * cur));
+      setYouTubeVolume(Math.max(0, startVol - step * cur));
       if (cur >= FADE_STEPS) { cancelYTFade(); setYouTubeVolume(0); cb?.(); }
     }, FADE_INTERVAL);
   }, [cancelYTFade, setYouTubeVolume]);
