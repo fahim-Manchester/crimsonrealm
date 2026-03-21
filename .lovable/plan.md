@@ -1,27 +1,26 @@
 
 
-# Add Loop Mode Toggle to Quick Play
+# Add URL Tracks Directly to Queue (Without Saving to Library)
 
-## What changes
+## Problem
+Currently, the "Add New" button on Main/Downtime queues forces users through the Save Music Dialog, which always saves to the library first. Users want to paste a YouTube URL and add it directly to a queue without cluttering their saved library.
 
-Currently, Quick Play always loops (the entire internal track list wraps around, and external URLs replay indefinitely). We'll add a loop mode selector — matching the Main/Downtime queues' `none | queue | one` pattern — so users can choose no loop, loop the queue, or loop one track.
+## Solution
+Replace the current "Add New" button behavior with a new inline "Add by URL" flow in `MusicQueuePanel`, and keep "From Library" + "Save to Library" as separate options.
 
 ## Changes
 
-### 1. `src/contexts/MusicContext.tsx`
-- Add `temporaryLoopMode: "none" | "queue" | "one"` to `MusicSettings` (default: `queue` to preserve current behavior)
-- In the `handleEnded` callback for temporary internal tracks (~line 400):
-  - If `temporaryLoopMode === "one"`: replay the same track (set `audio.loop = true`)
-  - If `temporaryLoopMode === "queue"`: current behavior (advance + wrap)
-  - If `temporaryLoopMode === "none"`: advance but stop after last track (call `clearTemporary`)
-- For external YouTube temporary playback: when YouTube video ends, respect the loop mode (currently it auto-replays via embed param `loop=1` — conditionally include that param based on setting)
-- Set `audio.loop = (temporaryLoopMode === "one")` when starting temporary internal tracks
+### 1. `src/components/music/MusicQueuePanel.tsx`
+- Add a new `onAddByUrl` callback prop
+- Replace the "Add New" button with an "Add URL" button that calls `onAddByUrl`
 
 ### 2. `src/components/music/MusicPlayer.tsx`
-- In the Quick Play tab's active playback indicator section (~line 378), add a loop mode cycle button (reuse the same pattern as `MusicQueuePanel`'s loop button)
-- Replace the hardcoded "Looping" text with the current loop mode label
-- Button cycles through: No Loop → Loop Queue → Loop One
+- Add state for an inline "Add by URL" panel per queue target (`showAddUrl: "main" | "downtime" | null`)
+- When active, show a small inline form (URL input + title input + "Add to Queue" button) inside the queue tab, similar to how `showThemePicker` / `showSavedBrowser` work
+- On submit: create a `QueueItem` directly with `id: url-${Date.now()}`, the user-provided title (or auto-extract from URL), and the URL — add it to the target queue with `addToMainQueue` / `addToDowntimeQueue`. No library save.
+- Add an optional "Also save to library" checkbox (unchecked by default) that, if checked, also calls `saveItem`
+- Keep the existing "From Library" button and flow unchanged
 
-### 3. `src/hooks/useMusicPreferences.ts`
-- No changes needed — `settings` is already stored as `Record<string, any>`, so the new key persists automatically
+### 3. No database or backend changes needed
+Queue items are stored in `music_preferences.main_queue` / `downtime_queue` as JSONB — they already support arbitrary URLs without needing a `saved_music` row.
 
