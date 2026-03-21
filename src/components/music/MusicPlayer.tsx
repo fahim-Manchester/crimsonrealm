@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Music, Play, Pause, SkipBack, SkipForward, Volume2, X,
-  Radio, HelpCircle, Clock, Repeat,
+  Radio, HelpCircle, Clock, Repeat, Link,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
@@ -37,6 +39,10 @@ const MusicPlayer = () => {
   const [saveDefaultUrl, setSaveDefaultUrl] = useState("");
   const [addNewTarget, setAddNewTarget] = useState<"main" | "downtime" | null>(null);
   const [showFirstTimeConfirm, setShowFirstTimeConfirm] = useState(false);
+  const [showAddUrl, setShowAddUrl] = useState<"main" | "downtime" | null>(null);
+  const [addUrlValue, setAddUrlValue] = useState("");
+  const [addUrlTitle, setAddUrlTitle] = useState("");
+  const [addUrlSaveToLib, setAddUrlSaveToLib] = useState(false);
 
   const { themeConfig } = useTheme();
   const { user } = useAuth();
@@ -118,6 +124,23 @@ const MusicPlayer = () => {
     }
     setAddNewTarget(null);
     return saved;
+  };
+
+  // Add URL directly to queue
+  const handleAddByUrlSubmit = async (target: "main" | "downtime") => {
+    const url = addUrlValue.trim();
+    if (!url) return;
+    const title = addUrlTitle.trim() || url;
+    const queueItem: QueueItem = { id: `url-${Date.now()}`, title, url };
+    if (target === "main") addToMainQueue(queueItem);
+    else addToDowntimeQueue(queueItem);
+    if (addUrlSaveToLib) {
+      await saveItem({ title, url, type: "track" });
+    }
+    setAddUrlValue("");
+    setAddUrlTitle("");
+    setAddUrlSaveToLib(false);
+    setShowAddUrl(null);
   };
 
   const isPlaying = state.useTemporary ? state.temporaryIsPlaying : state.isPlaying;
