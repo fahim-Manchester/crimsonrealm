@@ -551,6 +551,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     const { isRunning, isInCampaign } = campaignState;
+    // Read fresh values from refs to avoid stale closures
+    const s = stateRef.current;
+    const mq = mainQueueRef.current;
+    const dq = downtimeQueueRef.current;
+    const tiq = temporaryInternalQueueRef.current;
 
     // Ticking
     if (settings.clockTickingEnabled && isRunning && tickingEngineRef.current) {
@@ -560,37 +565,35 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     // Handle temporary (Quick Play) playback with timer
-    if (state.useTemporary) {
+    if (s.useTemporary) {
       // Skip auto-pause/resume when music menu is open (allow preview)
       if (menuOpenRef.current) return;
 
       if (settings.playOnlyWhenTimerRunning && isInCampaign) {
-        if (!isRunning && (state.temporaryIsPlaying || (temporaryInternalQueue.length > 0 && audioRef.current && !audioRef.current.paused))) {
-          // Timer paused → fade out and pause Quick Play
-          if (temporaryInternalQueue.length > 0 && audioRef.current) {
+        if (!isRunning && (s.temporaryIsPlaying || (tiq.length > 0 && audioRef.current && !audioRef.current.paused))) {
+          if (tiq.length > 0 && audioRef.current) {
             fadeOut(() => { audioRef.current?.pause(); });
           } else {
             pauseTemporaryExternal();
           }
-          setState(s => ({ ...s, temporaryIsPlaying: false }));
-        } else if (isRunning && !state.temporaryIsPlaying && (temporaryInternalQueue.length > 0 || state.temporaryUrl)) {
-          // Timer resumed → resume Quick Play
-          if (temporaryInternalQueue.length > 0 && audioRef.current) {
+          setState(prev => ({ ...prev, temporaryIsPlaying: false }));
+        } else if (isRunning && !s.temporaryIsPlaying && (tiq.length > 0 || s.temporaryUrl)) {
+          if (tiq.length > 0 && audioRef.current) {
             audioRef.current.play().catch(() => {});
             fadeIn();
-            setState(s => ({ ...s, temporaryIsPlaying: true }));
-          } else if (state.temporaryUrl) {
-            playTemporaryExternal(state.temporaryUrl);
+            setState(prev => ({ ...prev, temporaryIsPlaying: true }));
+          } else if (s.temporaryUrl) {
+            playTemporaryExternal(s.temporaryUrl);
           }
         }
       }
-      if (!settings.playOutsideCampaigns && !isInCampaign && state.temporaryIsPlaying) {
-        if (temporaryInternalQueue.length > 0 && audioRef.current) {
+      if (!settings.playOutsideCampaigns && !isInCampaign && s.temporaryIsPlaying) {
+        if (tiq.length > 0 && audioRef.current) {
           fadeOut(() => { audioRef.current?.pause(); });
         } else {
           pauseTemporaryExternal();
         }
-        setState(s => ({ ...s, temporaryIsPlaying: false }));
+        setState(prev => ({ ...prev, temporaryIsPlaying: false }));
       }
       return;
     }
@@ -598,45 +601,43 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Auto-switch between main and downtime queues
     if (settings.playOnlyWhenTimerRunning && settings.downtimeEnabled && isInCampaign) {
       if (isRunning) {
-        // Switch to main queue
-        if (state.activeSource !== "main") {
+        if (s.activeSource !== "main") {
           fadeAndPauseCurrent();
-          setState(s => ({ ...s, activeSource: "main", isPlaying: false }));
-          if (mainQueue.length > 0) {
+          setState(prev => ({ ...prev, activeSource: "main", isPlaying: false }));
+          if (mq.length > 0) {
             setTimeout(() => {
-              const idx = state.currentTrack && mainQueue.some(q => q.id === state.currentTrack!.id) 
-                ? mainQueue.findIndex(q => q.id === state.currentTrack!.id) : 0;
+              const cur = stateRef.current;
+              const idx = cur.currentTrack && mq.some(q => q.id === cur.currentTrack!.id) 
+                ? mq.findIndex(q => q.id === cur.currentTrack!.id) : 0;
               playQueueAtIndex(Math.max(0, idx));
             }, FADE_DURATION + 100);
           }
-        } else if (!state.isPlaying && mainQueue.length > 0) {
-          playQueueAtIndex(state.currentTrackIndex >= 0 ? state.currentTrackIndex : 0);
+        } else if (!s.isPlaying && mq.length > 0) {
+          playQueueAtIndex(s.currentTrackIndex >= 0 ? s.currentTrackIndex : 0);
         }
       } else {
-        // Switch to downtime queue
-        if (state.activeSource !== "downtime") {
+        if (s.activeSource !== "downtime") {
           fadeAndPauseCurrent();
-          setState(s => ({ ...s, activeSource: "downtime", isPlaying: false }));
-          if (downtimeQueue.length > 0) {
+          setState(prev => ({ ...prev, activeSource: "downtime", isPlaying: false }));
+          if (dq.length > 0) {
             setTimeout(() => playQueueAtIndex(0), FADE_DURATION + 100);
           }
-        } else if (!state.isPlaying && downtimeQueue.length > 0) {
-          playQueueAtIndex(state.currentTrackIndex >= 0 ? state.currentTrackIndex : 0);
+        } else if (!s.isPlaying && dq.length > 0) {
+          playQueueAtIndex(s.currentTrackIndex >= 0 ? s.currentTrackIndex : 0);
         }
       }
     } else if (settings.playOnlyWhenTimerRunning && !settings.downtimeEnabled) {
-      // Only play when timer running, no downtime
-      if (isRunning && isInCampaign && !state.isPlaying && mainQueue.length > 0) {
-        playQueueAtIndex(state.currentTrackIndex >= 0 ? state.currentTrackIndex : 0);
-      } else if (!isRunning && state.isPlaying) {
+      if (isRunning && isInCampaign && !s.isPlaying && mq.length > 0) {
+        playQueueAtIndex(s.currentTrackIndex >= 0 ? s.currentTrackIndex : 0);
+      } else if (!isRunning && s.isPlaying) {
         fadeAndPauseCurrent();
       }
     }
 
-    if (!settings.playOutsideCampaigns && !isInCampaign && state.isPlaying) {
+    if (!settings.playOutsideCampaigns && !isInCampaign && s.isPlaying) {
       fadeAndPauseCurrent();
     }
-  }, [campaignState, settings.playOnlyWhenTimerRunning, settings.downtimeEnabled, settings.playOutsideCampaigns, settings.clockTickingEnabled, state.useTemporary, state.temporaryIsPlaying, state.temporaryUrl]);
+  }, [campaignState, settings.playOnlyWhenTimerRunning, settings.downtimeEnabled, settings.playOutsideCampaigns, settings.clockTickingEnabled, fadeOut, fadeIn, fadeAndPauseCurrent, pauseTemporaryExternal, playTemporaryExternal, playQueueAtIndex]);
   // ---- Public API ----
   const play = useCallback(() => {
     if (state.useTemporary) {
