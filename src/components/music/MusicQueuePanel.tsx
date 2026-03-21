@@ -22,6 +22,7 @@ interface MusicQueuePanelProps {
   onAddFromLibrary: () => void;
   onAddInternal: () => void;
   onAddNew?: () => void;
+  onAddByUrl?: () => void;
   label: string;
 }
 
@@ -43,6 +44,7 @@ const MusicQueuePanel = ({
   onAddFromLibrary,
   onAddInternal,
   onAddNew,
+  onAddByUrl,
   label,
 }: MusicQueuePanelProps) => {
   const cycleLoop = () => {
@@ -120,10 +122,16 @@ const MusicQueuePanel = ({
           <Plus className="h-3 w-3 mr-1" />
           From Library
         </Button>
+        {onAddByUrl && (
+          <Button size="sm" variant="outline" onClick={onAddByUrl} className="text-xs flex-1">
+            <Plus className="h-3 w-3 mr-1" />
+            Add URL
+          </Button>
+        )}
         {onAddNew && (
           <Button size="sm" variant="outline" onClick={onAddNew} className="text-xs flex-1">
             <Plus className="h-3 w-3 mr-1" />
-            Add New
+            Save New
           </Button>
         )}
       </div>

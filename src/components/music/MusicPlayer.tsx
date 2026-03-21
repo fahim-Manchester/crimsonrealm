@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Music, Play, Pause, SkipBack, SkipForward, Volume2, X,
-  Radio, HelpCircle, Clock, Repeat,
+  Radio, HelpCircle, Clock, Repeat, Link,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
@@ -37,6 +39,10 @@ const MusicPlayer = () => {
   const [saveDefaultUrl, setSaveDefaultUrl] = useState("");
   const [addNewTarget, setAddNewTarget] = useState<"main" | "downtime" | null>(null);
   const [showFirstTimeConfirm, setShowFirstTimeConfirm] = useState(false);
+  const [showAddUrl, setShowAddUrl] = useState<"main" | "downtime" | null>(null);
+  const [addUrlValue, setAddUrlValue] = useState("");
+  const [addUrlTitle, setAddUrlTitle] = useState("");
+  const [addUrlSaveToLib, setAddUrlSaveToLib] = useState(false);
 
   const { themeConfig } = useTheme();
   const { user } = useAuth();
@@ -118,6 +124,23 @@ const MusicPlayer = () => {
     }
     setAddNewTarget(null);
     return saved;
+  };
+
+  // Add URL directly to queue
+  const handleAddByUrlSubmit = async (target: "main" | "downtime") => {
+    const url = addUrlValue.trim();
+    if (!url) return;
+    const title = addUrlTitle.trim() || url;
+    const queueItem: QueueItem = { id: `url-${Date.now()}`, title, url };
+    if (target === "main") addToMainQueue(queueItem);
+    else addToDowntimeQueue(queueItem);
+    if (addUrlSaveToLib) {
+      await saveItem({ title, url, type: "track" });
+    }
+    setAddUrlValue("");
+    setAddUrlTitle("");
+    setAddUrlSaveToLib(false);
+    setShowAddUrl(null);
   };
 
   const isPlaying = state.useTemporary ? state.temporaryIsPlaying : state.isPlaying;
@@ -230,6 +253,36 @@ const MusicPlayer = () => {
                         <Button size="sm" variant="ghost" onClick={() => setShowThemePicker(null)} className="text-xs">Back</Button>
                       </div>
                     </div>
+                  ) : showAddUrl === "main" ? (
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Link className="h-3.5 w-3.5" /> Add URL to Queue
+                      </h4>
+                      <div className="space-y-2">
+                        <Input
+                          value={addUrlValue}
+                          onChange={e => setAddUrlValue(e.target.value)}
+                          placeholder="YouTube, Spotify, SoundCloud URL..."
+                          className="text-sm"
+                        />
+                        <Input
+                          value={addUrlTitle}
+                          onChange={e => setAddUrlTitle(e.target.value)}
+                          placeholder="Title (optional)"
+                          className="text-sm"
+                        />
+                        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                          <Checkbox checked={addUrlSaveToLib} onCheckedChange={v => setAddUrlSaveToLib(!!v)} />
+                          Also save to library
+                        </label>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => handleAddByUrlSubmit("main")} disabled={!addUrlValue.trim()} className="text-xs">
+                          Add to Queue
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setShowAddUrl(null); setAddUrlValue(""); setAddUrlTitle(""); }} className="text-xs">Back</Button>
+                      </div>
+                    </div>
                   ) : showSavedBrowser === "main" ? (
                     <SavedMusicBrowser
                       items={savedItems}
@@ -250,6 +303,7 @@ const MusicPlayer = () => {
                       onAddFromLibrary={() => setShowSavedBrowser("main")}
                       onAddInternal={() => setShowThemePicker("main")}
                       onAddNew={() => handleAddNew("main")}
+                      onAddByUrl={() => setShowAddUrl("main")}
                       label="Main Music Queue"
                     />
                   )}
@@ -286,6 +340,36 @@ const MusicPlayer = () => {
                         <Button size="sm" variant="ghost" onClick={() => setShowThemePicker(null)} className="text-xs">Back</Button>
                       </div>
                     </div>
+                  ) : showAddUrl === "downtime" ? (
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Link className="h-3.5 w-3.5" /> Add URL to Queue
+                      </h4>
+                      <div className="space-y-2">
+                        <Input
+                          value={addUrlValue}
+                          onChange={e => setAddUrlValue(e.target.value)}
+                          placeholder="YouTube, Spotify, SoundCloud URL..."
+                          className="text-sm"
+                        />
+                        <Input
+                          value={addUrlTitle}
+                          onChange={e => setAddUrlTitle(e.target.value)}
+                          placeholder="Title (optional)"
+                          className="text-sm"
+                        />
+                        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                          <Checkbox checked={addUrlSaveToLib} onCheckedChange={v => setAddUrlSaveToLib(!!v)} />
+                          Also save to library
+                        </label>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => handleAddByUrlSubmit("downtime")} disabled={!addUrlValue.trim()} className="text-xs">
+                          Add to Queue
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setShowAddUrl(null); setAddUrlValue(""); setAddUrlTitle(""); }} className="text-xs">Back</Button>
+                      </div>
+                    </div>
                   ) : showSavedBrowser === "downtime" ? (
                     <SavedMusicBrowser
                       items={savedItems}
@@ -306,6 +390,7 @@ const MusicPlayer = () => {
                       onAddFromLibrary={() => setShowSavedBrowser("downtime")}
                       onAddInternal={() => setShowThemePicker("downtime")}
                       onAddNew={() => handleAddNew("downtime")}
+                      onAddByUrl={() => setShowAddUrl("downtime")}
                       label="Downtime Queue"
                     />
                   )}
