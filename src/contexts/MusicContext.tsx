@@ -812,7 +812,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setTemporaryInternalQueue(tracks);
       setTemporaryInternalIndex(startIndex);
       audioRef.current!.src = track.url;
-      audioRef.current!.loop = tracks.length === 1; // single track loops itself
+      audioRef.current!.loop = settings.temporaryLoopMode === "one";
       audioRef.current!.volume = 0;
       audioRef.current!.play().catch(console.error);
       fadeIn();
