@@ -253,6 +253,36 @@ const MusicPlayer = () => {
                         <Button size="sm" variant="ghost" onClick={() => setShowThemePicker(null)} className="text-xs">Back</Button>
                       </div>
                     </div>
+                  ) : showAddUrl === "main" ? (
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Link className="h-3.5 w-3.5" /> Add URL to Queue
+                      </h4>
+                      <div className="space-y-2">
+                        <Input
+                          value={addUrlValue}
+                          onChange={e => setAddUrlValue(e.target.value)}
+                          placeholder="YouTube, Spotify, SoundCloud URL..."
+                          className="text-sm"
+                        />
+                        <Input
+                          value={addUrlTitle}
+                          onChange={e => setAddUrlTitle(e.target.value)}
+                          placeholder="Title (optional)"
+                          className="text-sm"
+                        />
+                        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                          <Checkbox checked={addUrlSaveToLib} onCheckedChange={v => setAddUrlSaveToLib(!!v)} />
+                          Also save to library
+                        </label>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => handleAddByUrlSubmit("main")} disabled={!addUrlValue.trim()} className="text-xs">
+                          Add to Queue
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setShowAddUrl(null); setAddUrlValue(""); setAddUrlTitle(""); }} className="text-xs">Back</Button>
+                      </div>
+                    </div>
                   ) : showSavedBrowser === "main" ? (
                     <SavedMusicBrowser
                       items={savedItems}
@@ -273,6 +303,7 @@ const MusicPlayer = () => {
                       onAddFromLibrary={() => setShowSavedBrowser("main")}
                       onAddInternal={() => setShowThemePicker("main")}
                       onAddNew={() => handleAddNew("main")}
+                      onAddByUrl={() => setShowAddUrl("main")}
                       label="Main Music Queue"
                     />
                   )}
@@ -309,6 +340,36 @@ const MusicPlayer = () => {
                         <Button size="sm" variant="ghost" onClick={() => setShowThemePicker(null)} className="text-xs">Back</Button>
                       </div>
                     </div>
+                  ) : showAddUrl === "downtime" ? (
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Link className="h-3.5 w-3.5" /> Add URL to Queue
+                      </h4>
+                      <div className="space-y-2">
+                        <Input
+                          value={addUrlValue}
+                          onChange={e => setAddUrlValue(e.target.value)}
+                          placeholder="YouTube, Spotify, SoundCloud URL..."
+                          className="text-sm"
+                        />
+                        <Input
+                          value={addUrlTitle}
+                          onChange={e => setAddUrlTitle(e.target.value)}
+                          placeholder="Title (optional)"
+                          className="text-sm"
+                        />
+                        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                          <Checkbox checked={addUrlSaveToLib} onCheckedChange={v => setAddUrlSaveToLib(!!v)} />
+                          Also save to library
+                        </label>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => handleAddByUrlSubmit("downtime")} disabled={!addUrlValue.trim()} className="text-xs">
+                          Add to Queue
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setShowAddUrl(null); setAddUrlValue(""); setAddUrlTitle(""); }} className="text-xs">Back</Button>
+                      </div>
+                    </div>
                   ) : showSavedBrowser === "downtime" ? (
                     <SavedMusicBrowser
                       items={savedItems}
@@ -329,6 +390,7 @@ const MusicPlayer = () => {
                       onAddFromLibrary={() => setShowSavedBrowser("downtime")}
                       onAddInternal={() => setShowThemePicker("downtime")}
                       onAddNew={() => handleAddNew("downtime")}
+                      onAddByUrl={() => setShowAddUrl("downtime")}
                       label="Downtime Queue"
                     />
                   )}
