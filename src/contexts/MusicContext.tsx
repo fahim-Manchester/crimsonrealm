@@ -218,6 +218,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [campaignState, setCampaignState] = useState({ isRunning: false, isInCampaign: false });
   const menuOpenRef = useRef(false);
 
+  // Refs for values needed in campaignState effect to avoid stale closures
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const mainQueueRef = useRef(mainQueue);
+  mainQueueRef.current = mainQueue;
+  const downtimeQueueRef = useRef(downtimeQueue);
+  downtimeQueueRef.current = downtimeQueue;
+  const temporaryInternalQueueRef = useRef(temporaryInternalQueue);
+  temporaryInternalQueueRef.current = temporaryInternalQueue;
+
   const themeTracks = THEMES[theme]?.tracks || [];
 
   // Keep target volume refs in sync
