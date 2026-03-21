@@ -21,6 +21,7 @@ export interface MusicSettings {
   clockTickingEnabled: boolean;
   loopMode: LoopMode;
   downtimeLoopMode: LoopMode;
+  temporaryLoopMode: LoopMode;
   playOnlyWhenTimerRunning: boolean;
   downtimeEnabled: boolean;
   playOutsideCampaigns: boolean;
@@ -91,6 +92,7 @@ const defaultSettings: MusicSettings = {
   clockTickingEnabled: false,
   loopMode: "queue",
   downtimeLoopMode: "queue",
+  temporaryLoopMode: "queue",
   playOnlyWhenTimerRunning: false,
   downtimeEnabled: false,
   playOutsideCampaigns: true,
@@ -399,27 +401,39 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const handleEnded = () => {
       // Handle temporary internal playback (Quick Play theme tracks)
       if (state.useTemporary && temporaryInternalQueue.length > 0) {
+        const tempLoop = settings.temporaryLoopMode;
+
+        // Loop One: replay same track
+        if (tempLoop === "one") {
+          audio.currentTime = 0;
+          audio.play().catch(() => {});
+          return;
+        }
+
         const nextIdx = temporaryInternalIndex + 1;
         if (nextIdx < temporaryInternalQueue.length) {
           // Play next in temp rotation
           setTemporaryInternalIndex(nextIdx);
           const track = temporaryInternalQueue[nextIdx];
           audio.src = track.url;
-          audio.loop = temporaryInternalQueue.length === 1;
+          audio.loop = false;
+          audio.volume = 0;
+          audio.play().catch(() => {});
+          fadeIn();
+          setState(s => ({ ...s, temporaryIsPlaying: true }));
+        } else if (tempLoop === "queue") {
+          // Loop Queue: wrap back to start
+          setTemporaryInternalIndex(0);
+          const track = temporaryInternalQueue[0];
+          audio.src = track.url;
+          audio.loop = false;
           audio.volume = 0;
           audio.play().catch(() => {});
           fadeIn();
           setState(s => ({ ...s, temporaryIsPlaying: true }));
         } else {
-          // Loop back to start (Quick Play always loops)
-          setTemporaryInternalIndex(0);
-          const track = temporaryInternalQueue[0];
-          audio.src = track.url;
-          audio.loop = temporaryInternalQueue.length === 1;
-          audio.volume = 0;
-          audio.play().catch(() => {});
-          fadeIn();
-          setState(s => ({ ...s, temporaryIsPlaying: true }));
+          // No Loop: stop after last track
+          setState(s => ({ ...s, temporaryIsPlaying: false, useTemporary: false }));
         }
         return;
       }
@@ -444,7 +458,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     audio.addEventListener("ended", handleEnded);
     return () => audio.removeEventListener("ended", handleEnded);
-  }, [state.currentTrackIndex, state.activeSource, state.useTemporary, temporaryInternalQueue, temporaryInternalIndex, mainQueue, downtimeQueue, settings.loopMode, settings.downtimeLoopMode]);
+  }, [state.currentTrackIndex, state.activeSource, state.useTemporary, temporaryInternalQueue, temporaryInternalIndex, mainQueue, downtimeQueue, settings.loopMode, settings.downtimeLoopMode, settings.temporaryLoopMode]);
 
   // ---- Queue playback (handles both internal audio & external iframe) ----
   const playQueueAtIndex = useCallback((index: number) => {
