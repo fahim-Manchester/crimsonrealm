@@ -380,12 +380,26 @@ const MusicPlayer = () => {
                         <div className="flex items-center gap-2">
                           <Radio className="h-4 w-4 text-primary animate-pulse" />
                           <span className="text-sm text-primary font-medium">
-                            {state.temporaryIsPlaying ? "Playing" : "Paused"} — Looping
+                            {state.temporaryIsPlaying ? "Playing" : "Paused"}
                           </span>
                         </div>
-                        <Button size="sm" variant="ghost" onClick={clearTemporary}>
-                          <X className="h-3 w-3 mr-1" /> Clear
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-xs h-7 px-2"
+                            onClick={() => {
+                              const modes: Array<"none" | "queue" | "one"> = ["none", "queue", "one"];
+                              const next = modes[(modes.indexOf(settings.temporaryLoopMode) + 1) % modes.length];
+                              updateSettings({ temporaryLoopMode: next });
+                            }}
+                          >
+                            {settings.temporaryLoopMode === "none" ? "No Loop" : settings.temporaryLoopMode === "queue" ? "Loop Queue" : "Loop One"}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={clearTemporary}>
+                            <X className="h-3 w-3 mr-1" /> Clear
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </div>
